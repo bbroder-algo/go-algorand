@@ -125,6 +125,7 @@ func (ct *bobTracker) initialize(cfg config.Local, dbPathPrefix string) {
 // in isolation.
 func (ct *bobTracker) loadFromDisk(l ledgerForTracker, dbRound basics.Round) (err error) {
 	ct.log = l.trackerLog()
+	ct.log.Infof("bobtracker -- loadfromdisk")
 	ct.dbs = l.trackerDB()
 	ct.catchpointStore, err = l.trackerDB().MakeCatchpointReaderWriter()
 	if err != nil {
@@ -171,6 +172,7 @@ func (ct *bobTracker) committedUpTo(rnd basics.Round) (retRound, lookback basics
 func (ct *bobTracker) prepareCommit(dcc *deferredCommitContext) error {
 	ct.catchpointsMu.RLock()
 	defer ct.catchpointsMu.RUnlock()
+	ct.log.Infof("bobtracker -- preparecommit")
 
 	dcc.committedRoundDigests = make([]crypto.Digest, dcc.offset)
 	copy(dcc.committedRoundDigests, ct.roundDigest[:dcc.offset])
@@ -182,6 +184,7 @@ func (ct *bobTracker) commitRound(ctx context.Context, tx trackerdb.TransactionS
 	treeTargetRound := basics.Round(0)
 	offset := dcc.offset
 	dbRound := dcc.oldBase
+	ct.log.Infof("bobtracker -- commitround %d", dbRound)
 
 	arw, err := tx.MakeAccountsReaderWriter()
 	if err != nil {
@@ -207,14 +210,15 @@ func (ct *bobTracker) commitRound(ctx context.Context, tx trackerdb.TransactionS
 	}
 	treeTargetRound = dbRound + basics.Round(offset)
 
-	now := time.Duration(time.Now().UnixNano())
 	dcc.stats.BobMerkleTrieUpdateDuration = time.Duration(time.Now().UnixNano())
 
 	err = ct.accountsUpdateBalances(dcc.compactAccountDeltas, dcc.compactResourcesDeltas, dcc.compactKvDeltas, dcc.oldBase, dcc.newBase())
 	if err != nil {
 		return err
 	}
+	now := time.Duration(time.Now().UnixNano())
 	dcc.stats.BobMerkleTrieUpdateDuration = now - dcc.stats.BobMerkleTrieUpdateDuration
+	ct.log.Infof("bobtracker -- commitround duration %d", dcc.stats.BobMerkleTrieUpdateDuration)
 
 	err = arw.UpdateAccountsHashRound(ctx, treeTargetRound)
 	if err != nil {
@@ -258,6 +262,7 @@ func (ct *bobTracker) close() {
 func (ct *bobTracker) accountsUpdateBalances(accountsDeltas compactAccountDeltas, resourcesDeltas compactResourcesDeltas, kvDeltas map[string]modifiedKvValue, oldBase basics.Round, newBase basics.Round) (err error) {
 	var added, deleted bool
 	accumulatedChanges := 0
+	ct.log.Infof("bobtracker -- accountsUpdatebalance")
 
 	for i := 0; i < accountsDeltas.len(); i++ {
 		delta := accountsDeltas.getByIdx(i)
@@ -366,20 +371,19 @@ func (ct *bobTracker) accountsUpdateBalances(accountsDeltas compactAccountDeltas
 		_, err = ct.balancesTrie.Commit()
 	}
 
-	if ct.log.GetTelemetryEnabled() {
-		root, rootErr := ct.balancesTrie.RootHash()
-		if rootErr != nil {
-			ct.log.Errorf("accountsUpdateBalances: error retrieving balances trie root: %v", rootErr)
-			return
-		}
-		ct.log.Warnf("accountsUpdateBalances: root: %v", root.String())
+	root, rootErr := ct.balancesTrie.RootHash()
+	if rootErr != nil {
+		ct.log.Errorf("accountsUpdateBalances: error retrieving balances trie root: %v", rootErr)
+		return
 	}
+	ct.log.Infof("accountsUpdateBalances: changes: %d root: %v", accumulatedChanges, root.String())
 	return
 }
 
 // initializeHashes initializes account/resource/kv hashes.
 // as part of the initialization, it tests if a hash table matches to account base and updates the former.
 func (ct *bobTracker) initializeHashes(ctx context.Context, tx trackerdb.TransactionScope, rnd basics.Round) error {
+	ct.log.Infof("bobtracker -- initialize hashes")
 	arw, err := tx.MakeAccountsReaderWriter()
 	if err != nil {
 		return err
