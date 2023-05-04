@@ -81,6 +81,7 @@ type Catchpoint interface {
 	// reader
 	MakeCatchpointReader() (CatchpointReader, error)
 	MakeCatchpointPendingHashesIterator(hashCount int) CatchpointPendingHashesIter
+	MakeBobCommitter(staging bool) (MerkleCommitter, error)
 	MakeOrderedAccountsIter(accountCount int) OrderedAccountsIter
 	MakeKVsIter(ctx context.Context) (KVsIter, error)
 	MakeEncodedAccoutsBatchIter() EncodedAccountsBatchIter

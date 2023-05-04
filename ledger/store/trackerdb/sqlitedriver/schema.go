@@ -65,6 +65,9 @@ var accountsSchema = []string{
 	`CREATE TABLE IF NOT EXISTS accounthashes (
 		id integer primary key,
 		data blob)`,
+	`CREATE TABLE IF NOT EXISTS bobaccounthashes (
+		id integer primary key,
+		data blob)`,
 	`CREATE TABLE IF NOT EXISTS catchpointstate (
 		id string primary key,
 		intval integer,

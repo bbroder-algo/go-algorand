@@ -82,6 +82,7 @@ type Ledger struct {
 	accts          accountUpdates
 	acctsOnline    onlineAccounts
 	catchpoint     catchpointTracker
+	bob            bobTracker
 	txTail         txTail
 	bulletin       bulletin
 	notifier       blockNotifier
@@ -211,8 +212,9 @@ func (l *Ledger) reloadLedger() error {
 
 	// set account updates tracker as a driver to calculate tracker db round and committing offsets
 	trackers := []ledgerTracker{
-		&l.accts,          // update the balances
-		&l.catchpoint,     // catchpoints tracker : update catchpoint labels, create catchpoint files
+		&l.accts,      // update the balances
+		&l.catchpoint, // catchpoints tracker : update catchpoint labels, create catchpoint files
+		&l.bob,
 		&l.acctsOnline,    // update online account balances history
 		&l.txTail,         // update the transaction tail, tracking the recent 1000 txn
 		&l.bulletin,       // provide closed channel signaling support for completed rounds
@@ -224,6 +226,8 @@ func (l *Ledger) reloadLedger() error {
 	l.accts.initialize(l.cfg)
 	l.acctsOnline.initialize(l.cfg)
 	l.catchpoint.initialize(l.cfg, l.dbPathPrefix)
+
+	l.bob.initialize(l.cfg, l.dbPathPrefix)
 
 	err = l.trackers.initialize(l, trackers, l.cfg)
 	if err != nil {
