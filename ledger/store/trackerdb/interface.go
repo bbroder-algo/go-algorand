@@ -77,6 +77,8 @@ type AccountsWriterExt interface {
 	TxtailNewRound(ctx context.Context, baseRound basics.Round, roundData [][]byte, forgetBeforeRound basics.Round) error
 	UpdateAccountsRound(rnd basics.Round) (err error)
 	UpdateAccountsHashRound(ctx context.Context, hashRound basics.Round) (err error)
+	UpdateAccountsBobHashRound(ctx context.Context, hashRound basics.Round) (err error)
+
 	AccountsPutTotals(totals ledgercore.AccountTotals, catchpointStaging bool) error
 	OnlineAccountsDelete(forgetBefore basics.Round) (err error)
 	AccountsPutOnlineRoundParams(onlineRoundParamsData []ledgercore.OnlineRoundParamsData, startRound basics.Round) error
@@ -106,6 +108,7 @@ type AccountsReader interface {
 type AccountsReaderExt interface {
 	AccountsTotals(ctx context.Context, catchpointStaging bool) (totals ledgercore.AccountTotals, err error)
 	AccountsHashRound(ctx context.Context) (hashrnd basics.Round, err error)
+	AccountsBobHashRound(ctx context.Context) (hashrnd basics.Round, err error)
 	LookupAccountAddressFromAddressID(ctx context.Context, ref AccountRef) (address basics.Address, err error)
 	LookupAccountRowID(basics.Address) (ref AccountRef, err error)
 	LookupResourceDataByAddrID(accountRef AccountRef, aidx basics.CreatableIndex) (data []byte, err error)

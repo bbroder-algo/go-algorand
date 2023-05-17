@@ -192,7 +192,7 @@ func (ct *bobTracker) commitRound(ctx context.Context, tx trackerdb.TransactionS
 	}
 
 	var mc trackerdb.MerkleCommitter
-	mc, err = tx.MakeBobCommitter(false)
+	mc, err = tx.MakeBobCommitter()
 	if err != nil {
 		return
 	}
@@ -403,7 +403,7 @@ func (ct *bobTracker) initializeHashes(ctx context.Context, tx trackerdb.Transac
 	}
 
 	// create the bob merkle trie for the balances
-	committer, err := tx.MakeBobCommitter(false)
+	committer, err := tx.MakeBobCommitter()
 	if err != nil {
 		return fmt.Errorf("initializeHashes was unable to makeBobCommitter: %v", err)
 	}

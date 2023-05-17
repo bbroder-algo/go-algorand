@@ -194,6 +194,17 @@ func (r *accountsV2Reader) AccountsHashRound(ctx context.Context) (hashrnd basic
 	return
 }
 
+// AccountsBobHashRound returns the round of the state commitment hash tree
+// if the hash of the tree doesn't exists, it returns zero.
+func (r *accountsV2Reader) AccountsBobHashRound(ctx context.Context) (hashrnd basics.Round, err error) {
+	err = r.q.QueryRowContext(ctx, "SELECT rnd FROM acctrounds WHERE id='bobhashbase'").Scan(&hashrnd)
+	if err == sql.ErrNoRows {
+		hashrnd = basics.Round(0)
+		err = nil
+	}
+	return
+}
+
 // AccountsOnlineTop returns the top n online accounts starting at position offset
 // (that is, the top offset'th account through the top offset+n-1'th account).
 //
@@ -833,6 +844,25 @@ func (w *accountsV2Writer) UpdateAccountsRound(rnd basics.Round) (err error) {
 			err = fmt.Errorf("updateAccountsRound(acctbase, %d): expected to update 1 row but got %d", rnd, aff)
 			return
 		}
+	}
+	return
+}
+
+// UpdateAccountsBobHashRound updates the round number associated with the state commitment hash of current account data.
+func (w *accountsV2Writer) UpdateAccountsHashRound(ctx context.Context, hashRound basics.Round) (err error) {
+	res, err := w.e.ExecContext(ctx, "INSERT OR REPLACE INTO acctrounds(id,rnd) VALUES('bobhashbase',?)", hashRound)
+	if err != nil {
+		return
+	}
+
+	aff, err := res.RowsAffected()
+	if err != nil {
+		return
+	}
+
+	if aff != 1 {
+		err = fmt.Errorf("updateAccountsHashRound(bobhashbase,%d): expected to update 1 row but got %d", hashRound, aff)
+		return
 	}
 	return
 }
