@@ -49,6 +49,9 @@ type (
 		// TxnCommitments authenticates the set of transactions appearing in the block.
 		TxnCommitments
 
+		// Sha256StateCommitment authenticates the blockchain state after block transactions.
+		Sha256StateCommitment crypto.Digest `codec:"stc256"`
+
 		// TimeStamp in seconds since epoch
 		TimeStamp int64 `codec:"ts"`
 

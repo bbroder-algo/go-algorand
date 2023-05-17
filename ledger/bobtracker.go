@@ -220,7 +220,7 @@ func (ct *bobTracker) commitRound(ctx context.Context, tx trackerdb.TransactionS
 	dcc.stats.BobMerkleTrieUpdateDuration = now - dcc.stats.BobMerkleTrieUpdateDuration
 	ct.log.Infof("bobtracker -- commitround duration %d", dcc.stats.BobMerkleTrieUpdateDuration)
 
-	err = arw.UpdateAccountsHashRound(ctx, treeTargetRound)
+	err = arw.UpdateAccountsBobHashRound(ctx, treeTargetRound)
 	if err != nil {
 		return err
 	}
@@ -388,7 +388,7 @@ func (ct *bobTracker) initializeHashes(ctx context.Context, tx trackerdb.Transac
 	if err != nil {
 		return err
 	}
-	hashRound, err := arw.AccountsHashRound(ctx)
+	hashRound, err := arw.AccountsBobHashRound(ctx)
 	if err != nil {
 		return err
 	}
@@ -478,7 +478,7 @@ func (ct *bobTracker) initializeHashes(ctx context.Context, tx trackerdb.Transac
 				// if it's not ordered, we can ignore it for now; we'll just increase the counters and emit logs periodically.
 				if time.Since(lastRebuildTime) > 5*time.Second {
 					// let the user know that the trie is still being rebuilt.
-					ct.log.Infof("initializeHashes still building the trie, and hashed so far %d accounts", totalOrderedAccounts)
+					ct.log.Infof("initializeHashes still building the bob trie, and hashed so far %d accounts", totalOrderedAccounts)
 					lastRebuildTime = time.Now()
 				}
 			}
@@ -488,7 +488,7 @@ func (ct *bobTracker) initializeHashes(ctx context.Context, tx trackerdb.Transac
 		// if anything goes wrong, it will still get rolled back.
 		_, err = trie.Evict(true)
 		if err != nil {
-			return fmt.Errorf("initializeHashes was unable to commit changes to trie: %v", err)
+			return fmt.Errorf("initializeHashes was unable to commit changes to bob trie: %v", err)
 		}
 
 		// Now add the kvstore hashes
@@ -508,7 +508,7 @@ func (ct *bobTracker) initializeHashes(ctx context.Context, tx trackerdb.Transac
 			pendingTrieHashes++
 			added, err := trie.Add(hash)
 			if err != nil {
-				return fmt.Errorf("initializeHashes was unable to add kv (key=%s) to trie: %v", hex.EncodeToString(k), err)
+				return fmt.Errorf("initializeHashes was unable to add kv (key=%s) to bob trie: %v", hex.EncodeToString(k), err)
 			}
 			if !added {
 				ct.log.Warnf("initializeHashes attempted to add duplicate kv hash '%s' to bob merkle trie for key %s", hex.EncodeToString(hash), k)
@@ -533,7 +533,7 @@ func (ct *bobTracker) initializeHashes(ctx context.Context, tx trackerdb.Transac
 		}
 
 		// we've just updated the bob merkle trie, update the hashRound to reflect that.
-		err = arw.UpdateAccountsHashRound(ctx, rnd)
+		err = arw.UpdateAccountsBobHashRound(ctx, rnd)
 		if err != nil {
 			return fmt.Errorf("initializeHashes was unable to update the account hash round to %d: %v", rnd, err)
 		}
