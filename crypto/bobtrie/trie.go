@@ -201,12 +201,12 @@ func (mt *Trie) Delete(d []byte) (bool, error) {
 	if !found || err != nil {
 		return false, err
 	}
-	mt.cache.beginTransaction()
+//	mt.cache.beginTransaction()
 	if pnode.leaf() {
 		// remove the root.
 		mt.cache.deleteNode(mt.root)
 		mt.root = storedNodeIdentifierNull
-		mt.cache.commitTransaction()
+//		mt.cache.commitTransaction()
 		mt.elementLength = 0
 		return true, nil
 	}
@@ -217,7 +217,7 @@ func (mt *Trie) Delete(d []byte) (bool, error) {
 		return false, err
 	}
 	mt.cache.deleteNode(mt.root)
-	mt.cache.commitTransaction()
+//	mt.cache.commitTransaction()
 	mt.root = updatedRoot
 	return true, nil
 }
