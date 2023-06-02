@@ -1275,7 +1275,7 @@ func (eval *BlockEvaluator) endOfBlock() error {
 
 		// commit the bobtrie round to the trackerdb (commit and evict)
 		eval.l.CommitBobtrie(eval.block.Round())
-		eval.block.BobtrieRoot, err = eval.l.GetBobtrie().RootHash()
+		eval.block.Sha256StateCommitment, err = eval.l.GetBobtrie().RootHash()
 		if err != nil {
 			return err
 		}
