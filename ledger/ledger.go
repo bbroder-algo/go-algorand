@@ -878,7 +878,7 @@ func (l *Ledger) FlushCaches() {
 func (l *Ledger) CommitBobtrie(rnd basics.Round) {
 	l.bob.commitBobtrie(rnd)
 }
-func (l *Ledger) GetBobtrie() (*bobtrie.Trie) {
+func (l *Ledger) GetBobtrie() *bobtrie.Trie {
 	return l.bob.balancesTrie
 }
 

@@ -49,7 +49,7 @@ type (
 		// TxnCommitments authenticates the set of transactions appearing in the block.
 		TxnCommitments
 
-        BobtrieRoot crypto.Digest `codec:"btr"`
+		BobtrieRoot crypto.Digest `codec:"btr"`
 
 		// Sha256StateCommitment authenticates the blockchain state after block transactions.
 		Sha256StateCommitment crypto.Digest `codec:"stc256"`

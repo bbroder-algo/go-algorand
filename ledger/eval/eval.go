@@ -616,7 +616,7 @@ type LedgerForEvaluator interface {
 	VotersForStateProof(basics.Round) (*ledgercore.VotersForRound, error)
 	FlushCaches()
 	CommitBobtrie(rnd basics.Round)
-    GetBobtrie() (*bobtrie.Trie)
+	GetBobtrie() *bobtrie.Trie
 }
 
 // EvaluatorOptions defines the evaluator creation options
@@ -1039,7 +1039,7 @@ func (eval *BlockEvaluator) TransactionGroup(txgroup []transactions.SignedTxnWit
 
 	eval.block.Payset = append(eval.block.Payset, txibs...)
 	eval.blockTxBytes += groupTxBytes
-    cow.commitToBobtrie (eval.l.GetBobtrie())
+	cow.commitToBobtrie(eval.l.GetBobtrie())
 	cow.commitToParent()
 
 	return nil
@@ -1273,12 +1273,12 @@ func (eval *BlockEvaluator) endOfBlock() error {
 			return err
 		}
 
-        // commit the bobtrie round to the trackerdb (commit and evict)
-        eval.l.CommitBobtrie (eval.block.Round())
-        eval.block.BobtrieRoot, err = eval.l.GetBobtrie().RootHash()
-        if err != nil {
-            return err
-        }
+		// commit the bobtrie round to the trackerdb (commit and evict)
+		eval.l.CommitBobtrie(eval.block.Round())
+		eval.block.BobtrieRoot, err = eval.l.GetBobtrie().RootHash()
+		if err != nil {
+			return err
+		}
 
 		if eval.proto.TxnCounter {
 			eval.block.TxnCounter = eval.state.Counter()
@@ -1624,9 +1624,7 @@ func Eval(ctx context.Context, l LedgerForEvaluator, blk bookkeeping.Block, vali
 		go txvalidator.run()
 	}
 
-
-
-    l.GetBobtrie().BeginTransaction()
+	l.GetBobtrie().BeginTransaction()
 	base := eval.state.lookupParent.(*roundCowBase)
 transactionGroupLoop:
 	for {
@@ -1691,21 +1689,21 @@ transactionGroupLoop:
 			}
 			err = eval.TransactionGroup(txgroup.TxnGroup)
 			if err != nil {
-                l.GetBobtrie().RollbackTransaction()
+				l.GetBobtrie().RollbackTransaction()
 				return ledgercore.StateDelta{}, err
 			}
 		case <-ctx.Done():
-            l.GetBobtrie().RollbackTransaction()
+			l.GetBobtrie().RollbackTransaction()
 			return ledgercore.StateDelta{}, ctx.Err()
 		case doneErr, open := <-txvalidator.done:
 			// if we're not validating, then `txvalidator.done` would be nil, in which case this case statement would never be executed.
 			if open && err != nil {
-                l.GetBobtrie().RollbackTransaction()
+				l.GetBobtrie().RollbackTransaction()
 				return ledgercore.StateDelta{}, doneErr
 			}
 		}
 	}
-    eval.l.GetBobtrie().CommitTransaction()
+	eval.l.GetBobtrie().CommitTransaction()
 
 	// Finally, process any pending end-of-block state changes.
 	err = eval.endOfBlock()
