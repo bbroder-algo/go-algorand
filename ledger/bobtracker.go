@@ -406,16 +406,16 @@ func (ct *bobTracker) accountsUpdateBalances(accountsDeltas compactAccountDeltas
 	//	var cstats bobtrie.CommitStats
 	//	if accumulatedChanges > 0 {
 	//		cstats, err = ct.balancesTrie.Commit()
-	_, err = ct.balancesTrie.Commit()
+	//_, err = ct.balancesTrie.Commit()
 	//	}
 
-	root, rootErr := ct.balancesTrie.RootHash()
-	if rootErr != nil {
-		ct.log.Errorf("accountsUpdateBalances: error retrieving balances trie root: %v", rootErr)
-		return
-	}
+	//root, rootErr := ct.balancesTrie.RootHash()
+	//if rootErr != nil {
+	//	ct.log.Errorf("accountsUpdateBalances: error retrieving balances trie root: %v", rootErr)
+	//	return
+	//}
 	//	ct.log.Infof("accountsUpdateBalances: changes: %d root: %v", accumulatedChanges, root.String())
-	ct.log.Infof("accountsUpdateBalances: root: %v", root.String())
+	//ct.log.Infof("accountsUpdateBalances: root: %v", root.String())
 	return
 }
 
