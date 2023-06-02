@@ -20,6 +20,7 @@ import (
 	"fmt"
 
 	"github.com/algorand/go-algorand/config"
+	"github.com/algorand/go-algorand/crypto/bobtrie"
 	"github.com/algorand/go-algorand/data/basics"
 	"github.com/algorand/go-algorand/data/bookkeeping"
 	"github.com/algorand/go-algorand/data/transactions"
@@ -439,7 +440,7 @@ func (cb *roundCowState) delKey(addr basics.Address, aidx basics.AppIndex, globa
 
 // MakeDebugBalances creates a ledger suitable for dryrun and debugger
 func MakeDebugBalances(l LedgerForCowBase, round basics.Round, proto protocol.ConsensusVersion, prevTimestamp int64) apply.Balances {
-	base := makeRoundCowBase(l, round-1, 0, basics.Round(0), config.Consensus[proto])
+	base := makeRoundCowBase(l, round-1, 0, nil, basics.Round(0), config.Consensus[proto])
 
 	hdr := bookkeeping.BlockHeader{
 		Round:        round,
@@ -494,6 +495,25 @@ func (cb *roundCowState) StatefulEval(gi int, params *logic.EvalParams, aidx bas
 	}
 
 	return pass, evalDelta, nil
+}
+
+func (cb *roundCowState) commitToBobtrie(bob *bobtrie.Trie) {
+//    bob.BeginTransaction()
+	for addr, smod := range cb.sdeltas {
+		for aapp, _ := range smod {
+			lsd, ok := cb.commitParent.sdeltas[addr][aapp]
+            if ok {
+        		for key := range lsd.kvCow {
+        			delta, ok := lsd.kvCow[key]
+        			if !ok {
+                        bob.Delete ([]byte(delta.old.String()))
+        			}
+                    bob.Add ([]byte(delta.new.String()))
+                }
+    		}
+		}
+	}
+//    bob.CommitTransaction()
 }
 
 // buildEvalDelta creates an EvalDelta by converting internal sdeltas

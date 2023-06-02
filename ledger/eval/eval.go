@@ -24,6 +24,7 @@ import (
 
 	"github.com/algorand/go-algorand/config"
 	"github.com/algorand/go-algorand/crypto"
+	"github.com/algorand/go-algorand/crypto/bobtrie"
 	"github.com/algorand/go-algorand/data/basics"
 	"github.com/algorand/go-algorand/data/bookkeeping"
 	"github.com/algorand/go-algorand/data/transactions"
@@ -105,6 +106,9 @@ type roundCowBase struct {
 
 	// The round number of the previous block, for looking up prior state.
 	rnd basics.Round
+
+	// Pointer to the bobtrie
+	bobTrie *bobtrie.Trie
 
 	// TxnCounter from previous block header.
 	txnCount uint64
@@ -611,6 +615,8 @@ type LedgerForEvaluator interface {
 	LatestTotals() (basics.Round, ledgercore.AccountTotals, error)
 	VotersForStateProof(basics.Round) (*ledgercore.VotersForRound, error)
 	FlushCaches()
+	CommitBobtrie(rnd basics.Round)
+    GetBobtrie() (*bobtrie.Trie)
 }
 
 // EvaluatorOptions defines the evaluator creation options
@@ -1033,6 +1039,7 @@ func (eval *BlockEvaluator) TransactionGroup(txgroup []transactions.SignedTxnWit
 
 	eval.block.Payset = append(eval.block.Payset, txibs...)
 	eval.blockTxBytes += groupTxBytes
+    cow.commitToBobtrie (eval.l.GetBobtrie())
 	cow.commitToParent()
 
 	return nil
@@ -1265,6 +1272,12 @@ func (eval *BlockEvaluator) endOfBlock() error {
 		if err != nil {
 			return err
 		}
+
+        eval.l.CommitBobtrie (eval.block.Round())
+        eval.block.BobtrieRoot, err = eval.l.GetBobtrie().RootHash()
+        if err != nil {
+            return err
+        }
 
 		if eval.proto.TxnCounter {
 			eval.block.TxnCounter = eval.state.Counter()

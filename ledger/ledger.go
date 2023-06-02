@@ -28,6 +28,7 @@ import (
 	"github.com/algorand/go-algorand/agreement"
 	"github.com/algorand/go-algorand/config"
 	"github.com/algorand/go-algorand/crypto"
+	"github.com/algorand/go-algorand/crypto/bobtrie"
 	"github.com/algorand/go-algorand/data/basics"
 	"github.com/algorand/go-algorand/data/bookkeeping"
 	"github.com/algorand/go-algorand/data/transactions"
@@ -873,6 +874,12 @@ func (l *Ledger) StartEvaluator(hdr bookkeeping.BlockHeader, paysetHint, maxTxnB
 // FlushCaches flushes any pending data in caches so that it is fully available during future lookups.
 func (l *Ledger) FlushCaches() {
 	l.accts.flushCaches()
+}
+func (l *Ledger) CommitBobtrie(rnd basics.Round) {
+	l.bob.commitBobtrie(rnd)
+}
+func (l *Ledger) GetBobtrie() (*bobtrie.Trie) {
+	return l.bob.balancesTrie
 }
 
 // Validate uses the ledger to validate block blk as a candidate next block.

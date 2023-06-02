@@ -60,6 +60,7 @@ type MemoryConfig struct {
 // Trie is a merkle trie intended to efficiently calculate the merkle root of
 // unordered elements
 type Trie struct {
+	preTransactionRoot  storedNodeIdentifier
 	root                storedNodeIdentifier
 	nextNodeID          storedNodeIdentifier
 	lastCommittedNodeID storedNodeIdentifier
@@ -131,6 +132,19 @@ func (mt *Trie) RootHash() (crypto.Digest, error) {
 	}
 	return crypto.Hash(append([]byte{1}, pnode.hash...)), nil
 }
+
+//func (mt *Trie) BeginTransaction () {
+//    mt.preTransactionRoot = mt.root
+//    mt.cache.beginTransaction()
+//}
+
+//func (mt *Trie) CommitTransaction() {
+//    mt.cache.commitTransaction()
+//}
+//func (mt *Trie) RollbackTransaction () {
+//    mt.cache.rollbackTransaction()
+//    mt.root = mt.preTransactionRoot
+//}
 
 // Add adds the given hash to the trie.
 // returns false if the item already exists.

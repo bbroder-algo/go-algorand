@@ -68,7 +68,7 @@ type bobTracker struct {
 
 	// Connection to the database.
 	dbs             trackerdb.TrackerStore
-	catchpointStore trackerdb.CatchpointReaderWriter
+//	catchpointStore trackerdb.CatchpointReaderWriter
 
 	// The last catchpoint label that was written to the database. Should always align with what's in the database.
 	// note that this is the last catchpoint *label* and not the catchpoint file.
@@ -79,19 +79,19 @@ type bobTracker struct {
 	// closed, the accounts writer would try and complete the writing as soon as possible.
 	// Otherwise, it would take its time and perform periodic sleeps between chunks
 	// processing.
-	catchpointDataSlowWriting chan struct{}
+//	catchpointDataSlowWriting chan struct{}
 
 	// catchpointDataWriting helps to synchronize the (first stage) catchpoint data file
 	// writing. When this atomic variable is 0, no writing is going on.
 	// Any non-zero value indicates a catchpoint being written, or scheduled to be written.
-	catchpointDataWriting int32
+//	catchpointDataWriting int32
 
 	// The Trie tracking the current account balances. Always matches the balances that were
 	// written to the database.
 	balancesTrie *bobtrie.Trie
 
 	// roundDigest stores the digest of the block for every round starting with dbRound+1 and every round after it.
-	roundDigest []crypto.Digest
+//	roundDigest []crypto.Digest
 
 	// reenableCatchpointsRound is a round where the EnableCatchpointsWithSPContexts feature was enabled via the consensus.
 	// we avoid generating catchpoints before that round in order to ensure the network remain consistent in the catchpoint
@@ -99,16 +99,16 @@ type bobTracker struct {
 	// 1. It's zero, meaning that the EnableCatchpointsWithSPContexts has yet to be seen.
 	// 2. It's non-zero meaning that it the given round is after the EnableCatchpointsWithSPContexts was enabled ( it might be exact round
 	//    but that's only if newBlock was called with that round ), plus the lookback.
-	reenableCatchpointsRound basics.Round
+//	reenableCatchpointsRound basics.Round
 
 	// forceCatchpointFileWriting used for debugging purpose by bypassing the test against
 	// reenableCatchpointsRound in isCatchpointRound(), so that we could generate
 	// catchpoint files even before the protocol upgrade took place.
-	forceCatchpointFileWriting bool
+//	forceCatchpointFileWriting bool
 
 	// catchpointsMu protects `roundDigest`, `reenableCatchpointsRound` and
 	// `lastCatchpointLabel`.
-	catchpointsMu deadlock.RWMutex
+	bobtrieMu deadlock.RWMutex
 }
 
 // initialize initializes the bobTracker structure
@@ -127,16 +127,16 @@ func (ct *bobTracker) loadFromDisk(l ledgerForTracker, dbRound basics.Round) (er
 	ct.log = l.trackerLog()
 	ct.log.Infof("bobtracker -- loadfromdisk")
 	ct.dbs = l.trackerDB()
-	ct.catchpointStore, err = l.trackerDB().MakeCatchpointReaderWriter()
+//	ct.catchpointStore, err = l.trackerDB().MakeCatchpointReaderWriter()
 	if err != nil {
 		return err
 	}
 
-	ct.roundDigest = nil
-	ct.catchpointDataWriting = 0
+//	ct.roundDigest = nil
+//	ct.catchpointDataWriting = 0
 	// keep these channel closed if we're not generating catchpoint
-	ct.catchpointDataSlowWriting = make(chan struct{}, 1)
-	close(ct.catchpointDataSlowWriting)
+//	ct.catchpointDataSlowWriting = make(chan struct{}, 1)
+//	close(ct.catchpointDataSlowWriting)
 
 	err = ct.dbs.Transaction(func(ctx context.Context, tx trackerdb.TransactionScope) error {
 		return ct.initializeHashes(ctx, tx, dbRound)
@@ -152,10 +152,10 @@ func (ct *bobTracker) loadFromDisk(l ledgerForTracker, dbRound basics.Round) (er
 // newBlock informs the tracker of a new block from round
 // rnd and a given ledgercore.StateDelta as produced by BlockEvaluator.
 func (ct *bobTracker) newBlock(blk bookkeeping.Block, delta ledgercore.StateDelta) {
-	ct.catchpointsMu.Lock()
-	defer ct.catchpointsMu.Unlock()
+//	ct.catchpointsMu.Lock()
+//	defer ct.catchpointsMu.Unlock()
 
-	ct.roundDigest = append(ct.roundDigest, blk.Digest())
+//	ct.roundDigest = append(ct.roundDigest, blk.Digest())
 }
 
 // committedUpTo implements the ledgerTracker interface for bobTracker.
@@ -170,75 +170,111 @@ func (ct *bobTracker) committedUpTo(rnd basics.Round) (retRound, lookback basics
 // prepareCommit, commitRound and postCommit are called when it is time to commit tracker's data.
 // If an error returned the process is aborted.
 func (ct *bobTracker) prepareCommit(dcc *deferredCommitContext) error {
-	ct.catchpointsMu.RLock()
-	defer ct.catchpointsMu.RUnlock()
-	ct.log.Infof("bobtracker -- preparecommit")
+//	ct.catchpointsMu.RLock()
+//	defer ct.catchpointsMu.RUnlock()
+//	ct.log.Infof("bobtracker -- preparecommit")
 
-	dcc.committedRoundDigests = make([]crypto.Digest, dcc.offset)
-	copy(dcc.committedRoundDigests, ct.roundDigest[:dcc.offset])
+//	dcc.committedRoundDigests = make([]crypto.Digest, dcc.offset)
+//	copy(dcc.committedRoundDigests, ct.roundDigest[:dcc.offset])
 
 	return nil
 }
 
+func (ct *bobTracker) commitBobtrie(rnd basics.Round) (err error) {
+	err = ct.dbs.Transaction(func(ctx context.Context, tx trackerdb.TransactionScope) error {
+  	    arw, err := tx.MakeAccountsReaderWriter()
+    	if err != nil {
+    		return err
+    	}
+    	var mc trackerdb.MerkleCommitter
+    	mc, err = tx.MakeBobCommitter()
+    	if err != nil {
+    		return err
+    	}
+    	var trie *bobtrie.Trie
+    	if ct.balancesTrie == nil {
+    		trie, err = bobtrie.MakeTrie(mc, trackerdb.BobTrieMemoryConfig)
+    		if err != nil {
+    			ct.log.Warnf("unable to create bob merkle trie during committedUpTo: %v", err)
+    			return err
+       		}
+       		ct.balancesTrie = trie
+    	} else {
+    		ct.balancesTrie.SetCommitter(mc)
+    	}
+    	_, err = ct.balancesTrie.Commit()
+    	root, rootErr := ct.balancesTrie.RootHash()
+    	if rootErr != nil {
+            ct.log.Errorf("commitBobtrie: error retrieving balances trie root: %v", rootErr)
+    		return
+    	}
+    	ct.log.Infof("commitBobtrie: root: %v", root.String())
+        arw.UpdateAccountsBobHashRound(ctx, rnd)
+    	if ct.balancesTrie != nil {
+    		_, err := ct.balancesTrie.Evict(false)
+    		if err != nil {
+    			ct.log.Warnf("bob merkle trie failed to evict: %v", err)
+    		}
+    	}
+        return err
+	})
+
+	return err
+}
+
 func (ct *bobTracker) commitRound(ctx context.Context, tx trackerdb.TransactionScope, dcc *deferredCommitContext) (err error) {
-	treeTargetRound := basics.Round(0)
-	offset := dcc.offset
-	dbRound := dcc.oldBase
-	ct.log.Infof("bobtracker -- commitround %d", dbRound)
-
-	arw, err := tx.MakeAccountsReaderWriter()
-	if err != nil {
-		return err
-	}
-
-	var mc trackerdb.MerkleCommitter
-	mc, err = tx.MakeBobCommitter()
-	if err != nil {
-		return
-	}
-
-	var trie *bobtrie.Trie
-	if ct.balancesTrie == nil {
-		trie, err = bobtrie.MakeTrie(mc, trackerdb.BobTrieMemoryConfig)
-		if err != nil {
-			ct.log.Warnf("unable to create bob merkle trie during committedUpTo: %v", err)
-			return err
-		}
-		ct.balancesTrie = trie
-	} else {
-		ct.balancesTrie.SetCommitter(mc)
-	}
-	treeTargetRound = dbRound + basics.Round(offset)
-
-	dcc.stats.BobMerkleTrieUpdateDuration = time.Duration(time.Now().UnixNano())
-
-	err = ct.accountsUpdateBalances(dcc.compactAccountDeltas, dcc.compactResourcesDeltas, dcc.compactKvDeltas, dcc.oldBase, dcc.newBase())
-	if err != nil {
-		return err
-	}
-	now := time.Duration(time.Now().UnixNano())
-	dcc.stats.BobMerkleTrieUpdateDuration = now - dcc.stats.BobMerkleTrieUpdateDuration
-	ct.log.Infof("bobtracker -- commitround duration %d", dcc.stats.BobMerkleTrieUpdateDuration)
-
-	err = arw.UpdateAccountsBobHashRound(ctx, treeTargetRound)
-	if err != nil {
-		return err
-	}
-
+//	treeTargetRound := basics.Round(0)
+//	offset := dcc.offset
+//	dbRound := dcc.oldBase
+//	ct.log.Infof("bobtracker -- commitround %d", dbRound)
+//
+//	arw, err := tx.MakeAccountsReaderWriter()
+//	if err != nil {
+//		return err
+//	}
+//
+//	var mc trackerdb.MerkleCommitter
+//	mc, err = tx.MakeBobCommitter()
+//	if err != nil {
+//		return
+//	}
+//
+//	var trie *bobtrie.Trie
+//	if ct.balancesTrie == nil {
+//		trie, err = bobtrie.MakeTrie(mc, trackerdb.BobTrieMemoryConfig)
+//		if err != nil {
+//			ct.log.Warnf("unable to create bob merkle trie during committedUpTo: %v", err)
+//			return err
+//		}
+//		ct.balancesTrie = trie
+//	} else {
+//		ct.balancesTrie.SetCommitter(mc)
+//	}
+//	treeTargetRound = dbRound + basics.Round(offset)
+//
+//	dcc.stats.BobMerkleTrieUpdateDuration = time.Duration(time.Now().UnixNano())
+//
+//	err = ct.accountsUpdateBalances(dcc.compactAccountDeltas, dcc.compactResourcesDeltas, dcc.compactKvDeltas, dcc.oldBase, dcc.newBase())
+//	if err != nil {
+//		return err
+//	}
+//	now := time.Duration(time.Now().UnixNano())
+//	dcc.stats.BobMerkleTrieUpdateDuration = now - dcc.stats.BobMerkleTrieUpdateDuration
+//	ct.log.Infof("bobtracker -- commitround duration %d", dcc.stats.BobMerkleTrieUpdateDuration)
+//
+//	err = arw.UpdateAccountsBobHashRound(ctx, treeTargetRound)
+//	if err != nil {
+//		return err
+//	}
+//
 	return nil
 }
 
 func (ct *bobTracker) postCommit(ctx context.Context, dcc *deferredCommitContext) {
-	if ct.balancesTrie != nil {
-		_, err := ct.balancesTrie.Evict(false)
-		if err != nil {
-			ct.log.Warnf("bob merkle trie failed to evict: %v", err)
-		}
-	}
 
-	ct.catchpointsMu.Lock()
-	ct.roundDigest = ct.roundDigest[dcc.offset:]
-	ct.catchpointsMu.Unlock()
+//	ct.catchpointsMu.Lock()
+//	ct.roundDigest = ct.roundDigest[dcc.offset:]
+//	ct.catchpointsMu.Unlock()
 
 }
 
@@ -260,123 +296,126 @@ func (ct *bobTracker) close() {
 
 // accountsUpdateBalances applies the given compactAccountDeltas to the bobmerkle trie
 func (ct *bobTracker) accountsUpdateBalances(accountsDeltas compactAccountDeltas, resourcesDeltas compactResourcesDeltas, kvDeltas map[string]modifiedKvValue, oldBase basics.Round, newBase basics.Round) (err error) {
-	var added, deleted bool
-	accumulatedChanges := 0
+//	var added, deleted bool
+//	accumulatedChanges := 1
 	ct.log.Infof("bobtracker -- accountsUpdatebalance")
 
-	for i := 0; i < accountsDeltas.len(); i++ {
-		delta := accountsDeltas.getByIdx(i)
-		if !delta.oldAcct.AccountData.IsEmpty() {
-			deleteHash := trackerdb.AccountHashBuilderV6(delta.address, &delta.oldAcct.AccountData, protocol.Encode(&delta.oldAcct.AccountData))
-			deleted, err = ct.balancesTrie.Delete(deleteHash)
-			if err != nil {
-				return fmt.Errorf("failed to delete hash '%s' from bob merkle trie for account %v: %w", hex.EncodeToString(deleteHash), delta.address, err)
-			}
-			if !deleted {
-				ct.log.Errorf("failed to delete hash '%s' from bob merkle trie for account %v", hex.EncodeToString(deleteHash), delta.address)
-			} else {
-				accumulatedChanges++
-			}
-		}
+    // We already did all this
 
-		if !delta.newAcct.IsEmpty() {
-			addHash := trackerdb.AccountHashBuilderV6(delta.address, &delta.newAcct, protocol.Encode(&delta.newAcct))
-			added, err = ct.balancesTrie.Add(addHash)
-			if err != nil {
-				return fmt.Errorf("attempted to add duplicate hash '%s' to bob merkle trie for account %v: %w", hex.EncodeToString(addHash), delta.address, err)
-			}
-			if !added {
-				ct.log.Errorf("attempted to add duplicate hash '%s' to bob merkle trie for account %v", hex.EncodeToString(addHash), delta.address)
-			} else {
-				accumulatedChanges++
-			}
-		}
-	}
-
-	for i := 0; i < resourcesDeltas.len(); i++ {
-		resDelta := resourcesDeltas.getByIdx(i)
-		addr := resDelta.address
-		if !resDelta.oldResource.Data.IsEmpty() {
-			deleteHash, err := trackerdb.ResourcesHashBuilderV6(&resDelta.oldResource.Data, addr, resDelta.oldResource.Aidx, resDelta.oldResource.Data.UpdateRound, protocol.Encode(&resDelta.oldResource.Data))
-			if err != nil {
-				return err
-			}
-			deleted, err = ct.balancesTrie.Delete(deleteHash)
-			if err != nil {
-				return fmt.Errorf("failed to delete resource hash '%s' from bob merkle trie for account %v: %w", hex.EncodeToString(deleteHash), addr, err)
-			}
-			if !deleted {
-				ct.log.Errorf("failed to delete resource hash '%s' from bob merkle trie for account %v", hex.EncodeToString(deleteHash), addr)
-			} else {
-				accumulatedChanges++
-			}
-		}
-
-		if !resDelta.newResource.IsEmpty() {
-			addHash, err := trackerdb.ResourcesHashBuilderV6(&resDelta.newResource, addr, resDelta.oldResource.Aidx, resDelta.newResource.UpdateRound, protocol.Encode(&resDelta.newResource))
-			if err != nil {
-				return err
-			}
-			added, err = ct.balancesTrie.Add(addHash)
-			if err != nil {
-				return fmt.Errorf("attempted to add duplicate resource hash '%s' to bob merkle trie for account %v: %w", hex.EncodeToString(addHash), addr, err)
-			}
-			if !added {
-				ct.log.Errorf("attempted to add duplicate resource hash '%s' to bob merkle trie for account %v", hex.EncodeToString(addHash), addr)
-			} else {
-				accumulatedChanges++
-			}
-		}
-	}
-
-	for key, mv := range kvDeltas {
-		if mv.oldData == nil && mv.data == nil { // Came and went within the delta span
-			continue
-		}
-		if mv.oldData != nil {
-			// reminder: check mv.data for nil here, b/c bytes.Equal conflates nil and "".
-			if mv.data != nil && bytes.Equal(mv.oldData, mv.data) {
-				continue // changed back within the delta span
-			}
-			deleteHash := trackerdb.KvHashBuilderV6(key, mv.oldData)
-			deleted, err = ct.balancesTrie.Delete(deleteHash)
-			if err != nil {
-				return fmt.Errorf("failed to delete kv hash '%s' from bob merkle trie for key %v: %w", hex.EncodeToString(deleteHash), key, err)
-			}
-			if !deleted {
-				ct.log.Errorf("failed to delete kv hash '%s' from bob merkle trie for key %v", hex.EncodeToString(deleteHash), key)
-			} else {
-				accumulatedChanges++
-			}
-		}
-
-		if mv.data != nil {
-			addHash := trackerdb.KvHashBuilderV6(key, mv.data)
-			added, err = ct.balancesTrie.Add(addHash)
-			if err != nil {
-				return fmt.Errorf("attempted to add duplicate kv hash '%s' from bob merkle trie for key %v: %w", hex.EncodeToString(addHash), key, err)
-			}
-			if !added {
-				ct.log.Errorf("attempted to add duplicate kv hash '%s' from bob merkle trie for key %v", hex.EncodeToString(addHash), key)
-			} else {
-				accumulatedChanges++
-			}
-		}
-	}
+//	for i := 0; i < accountsDeltas.len(); i++ {
+//		delta := accountsDeltas.getByIdx(i)
+//		if !delta.oldAcct.AccountData.IsEmpty() {
+//			deleteHash := trackerdb.AccountHashBuilderV6(delta.address, &delta.oldAcct.AccountData, protocol.Encode(&delta.oldAcct.AccountData))
+//			deleted, err = ct.balancesTrie.Delete(deleteHash)
+//			if err != nil {
+//				return fmt.Errorf("failed to delete hash '%s' from bob merkle trie for account %v: %w", hex.EncodeToString(deleteHash), delta.address, err)
+//			}
+//			if !deleted {
+//				ct.log.Errorf("failed to delete hash '%s' from bob merkle trie for account %v", hex.EncodeToString(deleteHash), delta.address)
+//			} else {
+//				accumulatedChanges++
+//			}
+//		}
+//
+//		if !delta.newAcct.IsEmpty() {
+//			addHash := trackerdb.AccountHashBuilderV6(delta.address, &delta.newAcct, protocol.Encode(&delta.newAcct))
+//			added, err = ct.balancesTrie.Add(addHash)
+//			if err != nil {
+//				return fmt.Errorf("attempted to add duplicate hash '%s' to bob merkle trie for account %v: %w", hex.EncodeToString(addHash), delta.address, err)
+//			}
+//			if !added {
+//				ct.log.Errorf("attempted to add duplicate hash '%s' to bob merkle trie for account %v", hex.EncodeToString(addHash), delta.address)
+//			} else {
+//				accumulatedChanges++
+//			}
+//		}
+//	}
+//
+//	for i := 0; i < resourcesDeltas.len(); i++ {
+//		resDelta := resourcesDeltas.getByIdx(i)
+//		addr := resDelta.address
+//		if !resDelta.oldResource.Data.IsEmpty() {
+//			deleteHash, err := trackerdb.ResourcesHashBuilderV6(&resDelta.oldResource.Data, addr, resDelta.oldResource.Aidx, resDelta.oldResource.Data.UpdateRound, protocol.Encode(&resDelta.oldResource.Data))
+//			if err != nil {
+//				return err
+//			}
+//			deleted, err = ct.balancesTrie.Delete(deleteHash)
+//			if err != nil {
+//				return fmt.Errorf("failed to delete resource hash '%s' from bob merkle trie for account %v: %w", hex.EncodeToString(deleteHash), addr, err)
+//			}
+//			if !deleted {
+//				ct.log.Errorf("failed to delete resource hash '%s' from bob merkle trie for account %v", hex.EncodeToString(deleteHash), addr)
+//			} else {
+//				accumulatedChanges++
+//			}
+//		}
+//
+//		if !resDelta.newResource.IsEmpty() {
+//			addHash, err := trackerdb.ResourcesHashBuilderV6(&resDelta.newResource, addr, resDelta.oldResource.Aidx, resDelta.newResource.UpdateRound, protocol.Encode(&resDelta.newResource))
+//			if err != nil {
+//				return err
+//			}
+//			added, err = ct.balancesTrie.Add(addHash)
+//			if err != nil {
+//				return fmt.Errorf("attempted to add duplicate resource hash '%s' to bob merkle trie for account %v: %w", hex.EncodeToString(addHash), addr, err)
+//			}
+//			if !added {
+//				ct.log.Errorf("attempted to add duplicate resource hash '%s' to bob merkle trie for account %v", hex.EncodeToString(addHash), addr)
+//			} else {
+//				accumulatedChanges++
+//			}
+//		}
+//	}
+//
+//	for key, mv := range kvDeltas {
+//		if mv.oldData == nil && mv.data == nil { // Came and went within the delta span
+//			continue
+//		}
+//		if mv.oldData != nil {
+//			// reminder: check mv.data for nil here, b/c bytes.Equal conflates nil and "".
+//			if mv.data != nil && bytes.Equal(mv.oldData, mv.data) {
+//				continue // changed back within the delta span
+//			}
+//			deleteHash := trackerdb.KvHashBuilderV6(key, mv.oldData)
+//			deleted, err = ct.balancesTrie.Delete(deleteHash)
+//			if err != nil {
+//				return fmt.Errorf("failed to delete kv hash '%s' from bob merkle trie for key %v: %w", hex.EncodeToString(deleteHash), key, err)
+//			}
+//			if !deleted {
+//				ct.log.Errorf("failed to delete kv hash '%s' from bob merkle trie for key %v", hex.EncodeToString(deleteHash), key)
+//			} else {
+//				accumulatedChanges++
+//			}
+//		}
+//
+//		if mv.data != nil {
+//			addHash := trackerdb.KvHashBuilderV6(key, mv.data)
+//			added, err = ct.balancesTrie.Add(addHash)
+//			if err != nil {
+//				return fmt.Errorf("attempted to add duplicate kv hash '%s' from bob merkle trie for key %v: %w", hex.EncodeToString(addHash), key, err)
+//			}
+//			if !added {
+//				ct.log.Errorf("attempted to add duplicate kv hash '%s' from bob merkle trie for key %v", hex.EncodeToString(addHash), key)
+//			} else {
+//				accumulatedChanges++
+//			}
+//		}
+//	}
 
 	// write it all to disk.
 	//	var cstats bobtrie.CommitStats
-	if accumulatedChanges > 0 {
+//	if accumulatedChanges > 0 {
 		//		cstats, err = ct.balancesTrie.Commit()
-		_, err = ct.balancesTrie.Commit()
-	}
+	_, err = ct.balancesTrie.Commit()
+//	}
 
 	root, rootErr := ct.balancesTrie.RootHash()
 	if rootErr != nil {
 		ct.log.Errorf("accountsUpdateBalances: error retrieving balances trie root: %v", rootErr)
 		return
 	}
-	ct.log.Infof("accountsUpdateBalances: changes: %d root: %v", accumulatedChanges, root.String())
+//	ct.log.Infof("accountsUpdateBalances: changes: %d root: %v", accumulatedChanges, root.String())
+	ct.log.Infof("accountsUpdateBalances: root: %v", root.String())
 	return
 }
 
