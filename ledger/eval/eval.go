@@ -1273,6 +1273,7 @@ func (eval *BlockEvaluator) endOfBlock() error {
 			return err
 		}
 
+        // commit the bobtrie round to the trackerdb (commit and evict)
         eval.l.CommitBobtrie (eval.block.Round())
         eval.block.BobtrieRoot, err = eval.l.GetBobtrie().RootHash()
         if err != nil {
@@ -1623,6 +1624,9 @@ func Eval(ctx context.Context, l LedgerForEvaluator, blk bookkeeping.Block, vali
 		go txvalidator.run()
 	}
 
+
+
+    l.GetBobtrie().BeginTransaction()
 	base := eval.state.lookupParent.(*roundCowBase)
 transactionGroupLoop:
 	for {
@@ -1687,17 +1691,21 @@ transactionGroupLoop:
 			}
 			err = eval.TransactionGroup(txgroup.TxnGroup)
 			if err != nil {
+                l.GetBobtrie().RollbackTransaction()
 				return ledgercore.StateDelta{}, err
 			}
 		case <-ctx.Done():
+            l.GetBobtrie().RollbackTransaction()
 			return ledgercore.StateDelta{}, ctx.Err()
 		case doneErr, open := <-txvalidator.done:
 			// if we're not validating, then `txvalidator.done` would be nil, in which case this case statement would never be executed.
-			if open && doneErr != nil {
+			if open && err != nil {
+                l.GetBobtrie().RollbackTransaction()
 				return ledgercore.StateDelta{}, doneErr
 			}
 		}
 	}
+    eval.l.GetBobtrie().CommitTransaction()
 
 	// Finally, process any pending end-of-block state changes.
 	err = eval.endOfBlock()

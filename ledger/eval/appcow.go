@@ -498,7 +498,10 @@ func (cb *roundCowState) StatefulEval(gi int, params *logic.EvalParams, aidx bas
 }
 
 func (cb *roundCowState) commitToBobtrie(bob *bobtrie.Trie) {
-//    bob.BeginTransaction()
+    // Code to update the bobtracker held bobtrie with the changes in the roundCowState.
+    // this code is just some nonsense but the general idea is iterate through the changes
+    // and add/delete to the trie.  Called at the end of every transaction gropu in the block
+    // evaluator, just before the call to cow.commitToParent().
 	for addr, smod := range cb.sdeltas {
 		for aapp, _ := range smod {
 			lsd, ok := cb.commitParent.sdeltas[addr][aapp]
@@ -513,7 +516,6 @@ func (cb *roundCowState) commitToBobtrie(bob *bobtrie.Trie) {
     		}
 		}
 	}
-//    bob.CommitTransaction()
 }
 
 // buildEvalDelta creates an EvalDelta by converting internal sdeltas

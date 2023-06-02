@@ -133,18 +133,19 @@ func (mt *Trie) RootHash() (crypto.Digest, error) {
 	return crypto.Hash(append([]byte{1}, pnode.hash...)), nil
 }
 
-//func (mt *Trie) BeginTransaction () {
-//    mt.preTransactionRoot = mt.root
-//    mt.cache.beginTransaction()
-//}
+func (mt *Trie) BeginTransaction () {
+    //Exporting this function so all the operations in eval.go/Eval can be rolled back at once.
+    mt.preTransactionRoot = mt.root
+    mt.cache.beginTransaction()
+}
 
-//func (mt *Trie) CommitTransaction() {
-//    mt.cache.commitTransaction()
-//}
-//func (mt *Trie) RollbackTransaction () {
-//    mt.cache.rollbackTransaction()
-//    mt.root = mt.preTransactionRoot
-//}
+func (mt *Trie) CommitTransaction() {
+    mt.cache.commitTransaction()
+}
+func (mt *Trie) RollbackTransaction () {
+    mt.cache.rollbackTransaction()
+    mt.root = mt.preTransactionRoot
+}
 
 // Add adds the given hash to the trie.
 // returns false if the item already exists.
@@ -152,9 +153,9 @@ func (mt *Trie) Add(d []byte) (bool, error) {
 	if mt.root == storedNodeIdentifierNull {
 		// first item added to the tree.
 		var pnode *node
-		mt.cache.beginTransaction()
+//		mt.cache.beginTransaction()
 		pnode, mt.root = mt.cache.allocateNewNode()
-		mt.cache.commitTransaction()
+//		mt.cache.commitTransaction()
 		pnode.hash = d
 		mt.elementLength = len(d)
 		return true, nil
@@ -170,7 +171,7 @@ func (mt *Trie) Add(d []byte) (bool, error) {
 	if found || (err != nil) {
 		return false, err
 	}
-	mt.cache.beginTransaction()
+//	mt.cache.beginTransaction()
 	var updatedRoot storedNodeIdentifier
 	updatedRoot, err = pnode.add(&mt.cache, d[:], make([]byte, 0, len(d)))
 	if err != nil {
@@ -179,7 +180,7 @@ func (mt *Trie) Add(d []byte) (bool, error) {
 	}
 	mt.cache.deleteNode(mt.root)
 	mt.root = updatedRoot
-	mt.cache.commitTransaction()
+//	mt.cache.commitTransaction()
 	return true, nil
 }
 
