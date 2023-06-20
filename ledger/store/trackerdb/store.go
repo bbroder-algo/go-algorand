@@ -81,7 +81,6 @@ type Catchpoint interface {
 	// reader
 	MakeCatchpointReader() (CatchpointReader, error)
 	MakeCatchpointPendingHashesIterator(hashCount int) CatchpointPendingHashesIter
-	MakeBobCommitter(staging bool) (MerkleCommitter, error)
 	MakeOrderedAccountsIter(accountCount int) OrderedAccountsIter
 	MakeKVsIter(ctx context.Context) (KVsIter, error)
 	MakeEncodedAccoutsBatchIter() EncodedAccountsBatchIter
@@ -90,6 +89,9 @@ type Catchpoint interface {
 	// reader/writer
 	MakeCatchpointReaderWriter() (CatchpointReaderWriter, error)
 	MakeMerkleCommitter(staging bool) (MerkleCommitter, error)
+}
+type StateTrie interface {
+	MakeBobCommitter(staging bool) (BobCommitter, error)
 }
 
 // ReaderWriter is the interface for the trackerdb read/write operations.
@@ -103,6 +105,7 @@ type ReaderWriter interface {
 	RunMigrations(ctx context.Context, params Params, log logging.Logger, targetVersion int32) (mgr InitParams, err error)
 	// Note: at the moment, catchpoint methods are only accesible via reader/writer
 	Catchpoint
+    StateTrie
 }
 
 // BatchScope is an atomic write-only scope to the store.

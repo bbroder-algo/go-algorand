@@ -17,7 +17,6 @@
 package ledger
 
 import (
-	"bytes"
 	"context"
 	"database/sql"
 	"encoding/hex"
@@ -28,14 +27,12 @@ import (
 	"github.com/algorand/go-deadlock"
 
 	"github.com/algorand/go-algorand/config"
-	"github.com/algorand/go-algorand/crypto"
 	"github.com/algorand/go-algorand/crypto/bobtrie"
 	"github.com/algorand/go-algorand/data/basics"
 	"github.com/algorand/go-algorand/data/bookkeeping"
 	"github.com/algorand/go-algorand/ledger/ledgercore"
 	"github.com/algorand/go-algorand/ledger/store/trackerdb"
 	"github.com/algorand/go-algorand/logging"
-	"github.com/algorand/go-algorand/protocol"
 )
 
 const (
@@ -67,7 +64,8 @@ type bobTracker struct {
 	log logging.Logger
 
 	// Connection to the database.
-	dbs trackerdb.TrackerStore
+	dbs             trackerdb.Store
+//	catchpointStore trackerdb.CatchpointReaderWriter
 	//	catchpointStore trackerdb.CatchpointReaderWriter
 
 	// The last catchpoint label that was written to the database. Should always align with what's in the database.
@@ -115,6 +113,12 @@ type bobTracker struct {
 func (ct *bobTracker) initialize(cfg config.Local, dbPathPrefix string) {
 	ct.dbDirectory = filepath.Dir(dbPathPrefix)
 
+}
+
+// handleUnorderedCommitOrError is a special method for handling deferred commits that are out of order.
+// Tracker might update own state in this case. For example, account catchpoint tracker cancels
+// scheduled catchpoint writing that deferred commit.
+func (ct *bobTracker) handleUnorderedCommitOrError(dcc *deferredCommitContext) {
 }
 
 // loadFromDisk loads the state of a tracker from persistent
@@ -182,7 +186,7 @@ func (ct *bobTracker) prepareCommit(dcc *deferredCommitContext) error {
 
 func (ct *bobTracker) commitBobtrie(rnd basics.Round) (err error) {
 	err = ct.dbs.Transaction(func(ctx context.Context, tx trackerdb.TransactionScope) error {
-		arw, err := tx.MakeAccountsReaderWriter()
+		aw, err := tx.MakeAccountsWriter()
 		if err != nil {
 			return err
 		}
@@ -209,7 +213,7 @@ func (ct *bobTracker) commitBobtrie(rnd basics.Round) (err error) {
 			return rootErr
 		}
 		ct.log.Infof("commitBobtrie: root: %v", root.String())
-		arw.UpdateAccountsBobHashRound(ctx, rnd)
+		aw.UpdateAccountsBobHashRound(ctx, rnd)
 		if ct.balancesTrie != nil {
 			_, err := ct.balancesTrie.Evict(false)
 			if err != nil {
@@ -423,11 +427,16 @@ func (ct *bobTracker) accountsUpdateBalances(accountsDeltas compactAccountDeltas
 // as part of the initialization, it tests if a hash table matches to account base and updates the former.
 func (ct *bobTracker) initializeHashes(ctx context.Context, tx trackerdb.TransactionScope, rnd basics.Round) error {
 	ct.log.Infof("bobtracker -- initialize hashes")
-	arw, err := tx.MakeAccountsReaderWriter()
+	ar, err := tx.MakeAccountsReader()
 	if err != nil {
 		return err
 	}
-	hashRound, err := arw.AccountsBobHashRound(ctx)
+    aw, err := tx.MakeAccountsWriter()
+    if err != nil {
+        return err
+    }
+
+	hashRound, err := ar.AccountsBobHashRound(ctx)
 	if err != nil {
 		return err
 	}
@@ -435,7 +444,7 @@ func (ct *bobTracker) initializeHashes(ctx context.Context, tx trackerdb.Transac
 	if hashRound != rnd {
 		// if the hashed round is different then the base round, something was modified, and the accounts aren't in sync
 		// with the hashes.
-		err = arw.ResetAccountHashes(ctx)
+		err = aw.ResetAccountHashes(ctx)
 		if err != nil {
 			return err
 		}
@@ -488,7 +497,7 @@ func (ct *bobTracker) initializeHashes(ctx context.Context, tx trackerdb.Transac
 					if !added {
 						// we need to translate the "addrid" into actual account address so that
 						// we can report the failure.
-						addr, err := arw.LookupAccountAddressFromAddressID(ctx, acct.AccountRef)
+						addr, err := ar.LookupAccountAddressFromAddressID(ctx, acct.AccountRef)
 						if err != nil {
 							ct.log.Warnf("initializeHashes attempted to add duplicate acct hash '%s' to bob merkle trie for account id %d : %v", hex.EncodeToString(acct.Digest), acct.AccountRef, err)
 						} else {
@@ -572,7 +581,7 @@ func (ct *bobTracker) initializeHashes(ctx context.Context, tx trackerdb.Transac
 		}
 
 		// we've just updated the bob merkle trie, update the hashRound to reflect that.
-		err = arw.UpdateAccountsBobHashRound(ctx, rnd)
+		err = aw.UpdateAccountsBobHashRound(ctx, rnd)
 		if err != nil {
 			return fmt.Errorf("initializeHashes was unable to update the account hash round to %d: %v", rnd, err)
 		}

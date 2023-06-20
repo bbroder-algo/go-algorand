@@ -205,6 +205,12 @@ type MerkleCommitter interface {
 	LoadPage(page uint64) (content []byte, err error)
 }
 
+// BobCommitter allows storing and loading merkletrie pages from a sqlite database.
+type BobCommitter interface {
+	StorePage(page uint64, content []byte) error
+	LoadPage(page uint64) (content []byte, err error)
+}
+
 // OrderedAccountsIter is an iterator for Ordered Accounts.
 type OrderedAccountsIter interface {
 	Next(ctx context.Context) (acct []AccountAddressHash, processedRecords int, err error)

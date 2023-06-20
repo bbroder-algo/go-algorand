@@ -35,6 +35,7 @@ type trackerSQLStore struct {
 	trackerdb.Reader
 	trackerdb.Writer
 	trackerdb.Catchpoint
+    trackerdb.StateTrie
 }
 
 // Open opens the sqlite database store
@@ -50,7 +51,8 @@ func Open(dbFilename string, dbMem bool, log logging.Logger) (store trackerdb.St
 
 // MakeStore crates a tracker SQL db from sql db handle.
 func MakeStore(pair db.Pair) trackerdb.Store {
-	return &trackerSQLStore{pair, &sqlReader{pair.Rdb.Handle}, &sqlWriter{pair.Wdb.Handle}, &sqlCatchpoint{pair.Wdb.Handle}}
+	return &trackerSQLStore{pair, &sqlReader{pair.Rdb.Handle}, &sqlWriter{pair.Wdb.Handle}, &sqlCatchpoint{pair.Wdb.Handle},
+    &sqlStateTrie{pair.Wdb.Handle}}
 }
 
 func (s *trackerSQLStore) SetSynchronousMode(ctx context.Context, mode db.SynchronousMode, fullfsync bool) (err error) {
@@ -103,7 +105,7 @@ func (s *trackerSQLStore) Transaction(fn trackerdb.TransactionFn) (err error) {
 
 func (s *trackerSQLStore) TransactionContext(ctx context.Context, fn trackerdb.TransactionFn) (err error) {
 	return s.pair.Wdb.AtomicContext(ctx, func(ctx context.Context, tx *sql.Tx) error {
-		return fn(ctx, &sqlTransactionScope{tx, false, &sqlReader{tx}, &sqlWriter{tx}, &sqlCatchpoint{tx}})
+		return fn(ctx, &sqlTransactionScope{tx, false, &sqlReader{tx}, &sqlWriter{tx}, &sqlCatchpoint{tx}, &sqlStateTrie{tx}})
 	})
 }
 
@@ -112,7 +114,7 @@ func (s *trackerSQLStore) BeginTransaction(ctx context.Context) (trackerdb.Trans
 	if err != nil {
 		return nil, err
 	}
-	return &sqlTransactionScope{handle, false, &sqlReader{handle}, &sqlWriter{handle}, &sqlCatchpoint{handle}}, nil
+	return &sqlTransactionScope{handle, false, &sqlReader{handle}, &sqlWriter{handle}, &sqlCatchpoint{handle}, &sqlStateTrie{handle}}, nil
 }
 
 func (s trackerSQLStore) RunMigrations(ctx context.Context, params trackerdb.Params, log logging.Logger, targetVersion int32) (mgr trackerdb.InitParams, err error) {
@@ -227,6 +229,14 @@ func (w *sqlWriter) ModifyAcctBaseTest() error {
 	return modifyAcctBaseTest(w.e)
 }
 
+type sqlStateTrie struct {
+    e db.Executable
+}
+
+func (st *sqlStateTrie) MakeBobCommitter(staging bool) (trackerdb.BobCommitter, error) {
+    return MakeBobCommitter(st.e, staging)
+}
+
 type sqlCatchpoint struct {
 	e db.Executable
 }
@@ -312,6 +322,7 @@ type sqlTransactionScope struct {
 	trackerdb.Reader
 	trackerdb.Writer
 	trackerdb.Catchpoint
+    trackerdb.StateTrie
 }
 
 func (txs *sqlTransactionScope) RunMigrations(ctx context.Context, params trackerdb.Params, log logging.Logger, targetVersion int32) (mgr trackerdb.InitParams, err error) {
