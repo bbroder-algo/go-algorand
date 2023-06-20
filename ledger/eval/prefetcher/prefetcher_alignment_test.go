@@ -25,6 +25,7 @@ import (
 
 	"github.com/algorand/go-algorand/config"
 	"github.com/algorand/go-algorand/crypto"
+	"github.com/algorand/go-algorand/crypto/bobtrie"
 	"github.com/algorand/go-algorand/crypto/merklesignature"
 	"github.com/algorand/go-algorand/crypto/stateproof"
 	"github.com/algorand/go-algorand/data/basics"
@@ -103,6 +104,14 @@ func (l *prefetcherAlignmentTestLedger) BlockHdrCached(round basics.Round) (book
 
 func (l *prefetcherAlignmentTestLedger) CheckDup(config.ConsensusParams, basics.Round, basics.Round, basics.Round, transactions.Txid, ledgercore.Txlease) error {
 	return nil
+}
+
+ 
+func (l *prefetcherAlignmentTestLedger) CommitBobtrie(rnd basics.Round) {
+       return
+}
+func (l *prefetcherAlignmentTestLedger) GetBobtrie() *bobtrie.Trie {
+       return nil
 }
 
 func (l *prefetcherAlignmentTestLedger) GetStateProofVerificationContext(_ basics.Round) (*ledgercore.StateProofVerificationContext, error) {

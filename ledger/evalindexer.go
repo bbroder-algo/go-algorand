@@ -22,6 +22,7 @@ import (
 
 	"github.com/algorand/go-algorand/config"
 	"github.com/algorand/go-algorand/crypto"
+	"github.com/algorand/go-algorand/crypto/bobtrie"
 	"github.com/algorand/go-algorand/data/basics"
 	"github.com/algorand/go-algorand/data/bookkeeping"
 	"github.com/algorand/go-algorand/data/transactions"
@@ -213,6 +214,13 @@ func (l indexerLedgerConnector) LatestTotals() (rnd basics.Round, totals ledgerc
 func (l indexerLedgerConnector) VotersForStateProof(_ basics.Round) (*ledgercore.VotersForRound, error) {
 	// This function is not used by evaluator.
 	return nil, errors.New("VotersForStateProof() not implemented")
+}
+
+func (l indexerLedgerConnector) CommitBobtrie(rnd basics.Round) {
+       return
+}
+func (l indexerLedgerConnector) GetBobtrie() *bobtrie.Trie {
+       return nil
 }
 
 // GetStateProofVerificationContext is part of LedgerForEvaluator interface.

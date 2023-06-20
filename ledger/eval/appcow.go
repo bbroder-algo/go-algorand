@@ -440,7 +440,7 @@ func (cb *roundCowState) delKey(addr basics.Address, aidx basics.AppIndex, globa
 
 // MakeDebugBalances creates a ledger suitable for dryrun and debugger
 func MakeDebugBalances(l LedgerForCowBase, round basics.Round, proto protocol.ConsensusVersion, prevTimestamp int64) apply.Balances {
-	base := makeRoundCowBase(l, round-1, 0, nil, basics.Round(0), config.Consensus[proto])
+	base := makeRoundCowBase(l, round-1, 0, basics.Round(0), config.Consensus[proto])
 
 	hdr := bookkeeping.BlockHeader{
 		Round:        round,
@@ -502,20 +502,20 @@ func (cb *roundCowState) commitToBobtrie(bob *bobtrie.Trie) {
 	// this code is just some nonsense but the general idea is iterate through the changes
 	// and add/delete to the trie.  Called at the end of every transaction gropu in the block
 	// evaluator, just before the call to cow.commitToParent().
-	for addr, smod := range cb.sdeltas {
-		for aapp, _ := range smod {
-			lsd, ok := cb.commitParent.sdeltas[addr][aapp]
-			if ok {
-				for key := range lsd.kvCow {
-					delta, ok := lsd.kvCow[key]
-					if !ok {
-						bob.Delete([]byte(delta.old.String()))
-					}
-					bob.Add([]byte(delta.new.String()))
-				}
-			}
-		}
-	}
+//	for addr, smod := range cb.sdeltas {
+//		for aapp, _ := range smod {
+//			lsd, ok := cb.commitParent.sdeltas[addr][aapp]
+//			if ok {
+//				for key := range lsd.kvCow {
+//					delta, ok := lsd.kvCow[key]
+//					if !ok {
+//						bob.Delete([]byte(delta.old.String()))
+//					}
+//					bob.Add([]byte(delta.new.String()))
+//				}
+//			}
+//		}
+//	}
 }
 
 // buildEvalDelta creates an EvalDelta by converting internal sdeltas

@@ -849,7 +849,7 @@ func (w *accountsV2Writer) UpdateAccountsRound(rnd basics.Round) (err error) {
 }
 
 // UpdateAccountsBobHashRound updates the round number associated with the state commitment hash of current account data.
-func (w *accountsV2Writer) UpdateAccountsHashRound(ctx context.Context, hashRound basics.Round) (err error) {
+func (w *accountsV2Writer) UpdateAccountsBobHashRound(ctx context.Context, hashRound basics.Round) (err error) {
 	res, err := w.e.ExecContext(ctx, "INSERT OR REPLACE INTO acctrounds(id,rnd) VALUES('bobhashbase',?)", hashRound)
 	if err != nil {
 		return

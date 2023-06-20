@@ -187,7 +187,7 @@ func (ct *bobTracker) commitBobtrie(rnd basics.Round) (err error) {
 			return err
 		}
 		var mc trackerdb.MerkleCommitter
-		mc, err = tx.MakeBobCommitter()
+		mc, err = tx.MakeBobCommitter(false)
 		if err != nil {
 			return err
 		}
@@ -206,7 +206,7 @@ func (ct *bobTracker) commitBobtrie(rnd basics.Round) (err error) {
 		root, rootErr := ct.balancesTrie.RootHash()
 		if rootErr != nil {
 			ct.log.Errorf("commitBobtrie: error retrieving balances trie root: %v", rootErr)
-			return
+			return rootErr
 		}
 		ct.log.Infof("commitBobtrie: root: %v", root.String())
 		arw.UpdateAccountsBobHashRound(ctx, rnd)
@@ -442,7 +442,7 @@ func (ct *bobTracker) initializeHashes(ctx context.Context, tx trackerdb.Transac
 	}
 
 	// create the bob merkle trie for the balances
-	committer, err := tx.MakeBobCommitter()
+	committer, err := tx.MakeBobCommitter(false)
 	if err != nil {
 		return fmt.Errorf("initializeHashes was unable to makeBobCommitter: %v", err)
 	}

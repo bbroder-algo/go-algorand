@@ -30,6 +30,7 @@ import (
 	"github.com/algorand/go-algorand/agreement"
 	"github.com/algorand/go-algorand/config"
 	"github.com/algorand/go-algorand/crypto"
+	"github.com/algorand/go-algorand/crypto/bobtrie"
 	"github.com/algorand/go-algorand/crypto/merklesignature"
 	"github.com/algorand/go-algorand/data/basics"
 	basics_testing "github.com/algorand/go-algorand/data/basics/testing"
@@ -732,11 +733,22 @@ type evalTestLedger struct {
 	latestTotals        ledgercore.AccountTotals
 	tracer              logic.EvalTracer
 	boxes               map[string][]byte
+    bobtrie             *bobtrie.Trie
 }
 
 // newTestLedger creates a in memory Ledger that is as realistic as
 // possible.  It has Rewards and FeeSink properly configured.
 func newTestLedger(t testing.TB, balances bookkeeping.GenesisBalances) *evalTestLedger {
+    var memoryCommitter bobtrie.InMemoryCommitter
+    var defaultTestMemoryConfig = bobtrie.MemoryConfig{
+            NodesCountPerPage:         int64(512),
+            CachedNodesCount:          10000,
+            PageFillFactor:            0.90,
+            MaxChildrenPagesThreshold: 32,
+    }
+    var bt *bobtrie.Trie
+    bt, err := bobtrie.MakeTrie(&memoryCommitter, defaultTestMemoryConfig)
+    require.NoError(t, err)
 	l := &evalTestLedger{
 		blocks:        make(map[basics.Round]bookkeeping.Block),
 		roundBalances: make(map[basics.Round]map[basics.Address]basics.AccountData),
@@ -767,6 +779,14 @@ func newTestLedger(t testing.TB, balances bookkeeping.GenesisBalances) *evalTest
 	require.False(t, genBlock.FeeSink.IsZero())
 	require.False(t, genBlock.RewardsPool.IsZero())
 	return l
+}
+
+func (ledger *evalTestLedger) GetBobtrie() *bobtrie.Trie {
+       return ledger.bobtrie
+}
+func (ledger *evalTestLedger) CommitBobtrie(rnd basics.Round) {
+       ledger.bobtrie.Commit()
+       ledger.bobtrie.RootHash()
 }
 
 // Validate uses the ledger to validate block blk as a candidate next block.

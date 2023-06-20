@@ -28,7 +28,7 @@ type bobCommitter struct {
 
 // MakeMerkleCommitter creates a MerkleCommitter object that implements the merkletrie.Committer interface allowing storing and loading
 // merkletrie pages from a sqlite database.
-func MakeBobCommitter(tx *sql.Tx) (mc *bobCommitter, err error) {
+func MakeBobCommitter(tx *sql.Tx, staging bool) (mc *bobCommitter, err error) {
 	mc = &bobCommitter{tx: tx}
 	accountHashesTable := "bobaccounthashes"
 	mc.deleteStmt, err = tx.Prepare("DELETE FROM " + accountHashesTable + " WHERE id=?")

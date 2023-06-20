@@ -30,6 +30,7 @@ import (
 
 	"github.com/algorand/go-algorand/config"
 	"github.com/algorand/go-algorand/crypto"
+	"github.com/algorand/go-algorand/crypto/bobtrie"
 	"github.com/algorand/go-algorand/data/basics"
 	"github.com/algorand/go-algorand/data/bookkeeping"
 	"github.com/algorand/go-algorand/data/transactions"
@@ -829,6 +830,13 @@ func (aul *accountUpdatesLedgerEvaluator) FlushCaches() {}
 // GenesisHash returns the genesis hash
 func (aul *accountUpdatesLedgerEvaluator) GenesisHash() crypto.Digest {
 	return aul.au.ledger.GenesisHash()
+}
+
+func (aul *accountUpdatesLedgerEvaluator) CommitBobtrie(rnd basics.Round) {
+       return
+}
+func (aul *accountUpdatesLedgerEvaluator) GetBobtrie() *bobtrie.Trie {
+       return nil
 }
 
 // GenesisProto returns the genesis consensus params
