@@ -28,6 +28,7 @@ import (
 	"github.com/algorand/go-algorand/ledger/apply"
 	"github.com/algorand/go-algorand/ledger/ledgercore"
 	"github.com/algorand/go-algorand/protocol"
+    "github.com/algorand/go-algorand/ledger/store/trackerdb"
 )
 
 //msgp:ignore storageAction
@@ -497,11 +498,32 @@ func (cb *roundCowState) StatefulEval(gi int, params *logic.EvalParams, aidx bas
 	return pass, evalDelta, nil
 }
 
-func (cb *roundCowState) commitToBobtrie(bob *bobtrie.Trie) {
+func (cb *roundCowState) commitToBobtrie(bob *bobtrie.Trie) error {
 	// Code to update the bobtracker held bobtrie with the changes in the roundCowState.
 	// this code is just some nonsense but the general idea is iterate through the changes
 	// and add/delete to the trie.  Called at the end of every transaction gropu in the block
 	// evaluator, just before the call to cow.commitToParent().
+	for i := 0; i < cb.mods.Accts.Len(); i++ {
+		accountAddr, updatedAccountData := cb.mods.Accts.GetByIdx(i)
+		previousAccountData, lookupError := cb.lookupParent.lookup(accountAddr)
+		if lookupError != nil {
+			return fmt.Errorf("roundCowState.commitToBobtrie unable to load account data for address %v", accountAddr)
+		}
+        if !previousAccountData.IsZero() {
+            var previousAD trackerdb.BaseAccountData
+             previousAD.SetCoreAccountData(&previousAccountData)
+
+            deleteHash := trackerdb.AccountHashBuilderV6(accountAddr, &previousAD, protocol.Encode(&previousAD))
+            bob.Delete(deleteHash)
+        }
+
+        var updatedAD trackerdb.BaseAccountData
+        updatedAD.SetCoreAccountData(&updatedAccountData)
+        addHash := trackerdb.AccountHashBuilderV6(accountAddr, &updatedAD, protocol.Encode(&updatedAD))
+        bob.Add(addHash)
+	}
+    return nil
+
 //	for addr, smod := range cb.sdeltas {
 //		for aapp, _ := range smod {
 //			lsd, ok := cb.commitParent.sdeltas[addr][aapp]

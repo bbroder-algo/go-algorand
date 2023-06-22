@@ -477,12 +477,14 @@ func (ct *bobTracker) initializeHashes(ctx context.Context, tx trackerdb.Transac
 		lastRebuildTime := startTrieBuildTime
 		pendingTrieHashes := 0
 		totalOrderedAccounts := 0
+        trie.BeginTransaction()
 		for {
 			accts, processedRows, err := accountBuilderIt.Next(ctx)
 			if err == sql.ErrNoRows {
 				// the account builder would return sql.ErrNoRows when no more data is available.
 				break
 			} else if err != nil {
+                trie.RollbackTransaction()
 				return err
 			}
 
@@ -492,8 +494,11 @@ func (ct *bobTracker) initializeHashes(ctx context.Context, tx trackerdb.Transac
 				for _, acct := range accts {
 					added, err := trie.Add(acct.Digest)
 					if err != nil {
+                        trie.RollbackTransaction()
 						return fmt.Errorf("initializeHashes was unable to add acct to trie: %v", err)
 					}
+					addr, err := ar.LookupAccountAddressFromAddressID(ctx, acct.AccountRef)
+					ct.log.Warnf("initializeHashes add acct hash '%s' to bob merkle trie for account %v", hex.EncodeToString(acct.Digest), addr)
 					if !added {
 						// we need to translate the "addrid" into actual account address so that
 						// we can report the failure.
@@ -511,6 +516,7 @@ func (ct *bobTracker) initializeHashes(ctx context.Context, tx trackerdb.Transac
 					// if anything goes wrong, it will still get rolled back.
 					_, err = trie.Evict(true)
 					if err != nil {
+                        trie.RollbackTransaction()
 						return fmt.Errorf("initializeHashes was unable to commit changes to trie: %v", err)
 					}
 					pendingTrieHashes = 0
@@ -536,6 +542,7 @@ func (ct *bobTracker) initializeHashes(ctx context.Context, tx trackerdb.Transac
 		// if anything goes wrong, it will still get rolled back.
 		_, err = trie.Evict(true)
 		if err != nil {
+            trie.RollbackTransaction()
 			return fmt.Errorf("initializeHashes was unable to commit changes to bob trie: %v", err)
 		}
 
@@ -543,19 +550,24 @@ func (ct *bobTracker) initializeHashes(ctx context.Context, tx trackerdb.Transac
 		pendingTrieHashes = 0
 		kvs, err := tx.MakeKVsIter(ctx)
 		if err != nil {
+            trie.RollbackTransaction()
 			return err
 		}
 		defer kvs.Close()
 		for kvs.Next() {
 			k, v, err := kvs.KeyValue()
 			if err != nil {
+                trie.RollbackTransaction()
 				return err
 			}
 			hash := trackerdb.KvHashBuilderV6(string(k), v)
 			trieHashCount++
 			pendingTrieHashes++
 			added, err := trie.Add(hash)
+            ct.log.Warnf("initializeHashes add kv (key=%s) to bob trie", hex.EncodeToString(k))
+
 			if err != nil {
+                trie.RollbackTransaction()
 				return fmt.Errorf("initializeHashes was unable to add kv (key=%s) to bob trie: %v", hex.EncodeToString(k), err)
 			}
 			if !added {
@@ -566,6 +578,7 @@ func (ct *bobTracker) initializeHashes(ctx context.Context, tx trackerdb.Transac
 				// if anything goes wrong, it will still get rolled back.
 				_, err = trie.Evict(true)
 				if err != nil {
+                    trie.RollbackTransaction()
 					return fmt.Errorf("initializeHashes was unable to commit changes to trie: %v", err)
 				}
 				pendingTrieHashes = 0
@@ -577,15 +590,18 @@ func (ct *bobTracker) initializeHashes(ctx context.Context, tx trackerdb.Transac
 		// if anything goes wrong, it will still get rolled back.
 		_, err = trie.Evict(true)
 		if err != nil {
+            trie.RollbackTransaction()
 			return fmt.Errorf("initializeHashes was unable to commit changes to trie: %v", err)
 		}
 
 		// we've just updated the bob merkle trie, update the hashRound to reflect that.
 		err = aw.UpdateAccountsBobHashRound(ctx, rnd)
 		if err != nil {
+            trie.RollbackTransaction()
 			return fmt.Errorf("initializeHashes was unable to update the account hash round to %d: %v", rnd, err)
 		}
 
+        trie.CommitTransaction()
 		ct.log.Infof("initializeHashes rebuilt the bob merkle trie with %d entries in %v", trieHashCount, time.Since(startTrieBuildTime))
 	}
 	ct.balancesTrie = trie

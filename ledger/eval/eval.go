@@ -1039,7 +1039,10 @@ func (eval *BlockEvaluator) TransactionGroup(txgroup []transactions.SignedTxnWit
 
 	eval.block.Payset = append(eval.block.Payset, txibs...)
 	eval.blockTxBytes += groupTxBytes
-	cow.commitToBobtrie(eval.l.GetBobtrie())
+	err = cow.commitToBobtrie(eval.l.GetBobtrie())
+    if err != nil {
+        return err
+    }
 	cow.commitToParent()
 
 	return nil
