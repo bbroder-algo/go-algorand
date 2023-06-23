@@ -212,7 +212,7 @@ func (ct *bobTracker) commitBobtrie(rnd basics.Round) (err error) {
 			ct.log.Errorf("commitBobtrie: error retrieving balances trie root: %v", rootErr)
 			return rootErr
 		}
-		ct.log.Infof("commitBobtrie: root: %v", root.String())
+		ct.log.Infof("commitBobtrie: round %d, root: %v", rnd, root.String())
 		aw.UpdateAccountsBobHashRound(ctx, rnd)
 		if ct.balancesTrie != nil {
 			_, err := ct.balancesTrie.Evict(false)

@@ -18,6 +18,7 @@ package eval
 
 import (
 	"fmt"
+    "encoding/hex"
 
 	"github.com/algorand/go-algorand/config"
 	"github.com/algorand/go-algorand/crypto/bobtrie"
@@ -514,13 +515,19 @@ func (cb *roundCowState) commitToBobtrie(bob *bobtrie.Trie) error {
              previousAD.SetCoreAccountData(&previousAccountData)
 
             deleteHash := trackerdb.AccountHashBuilderV6(accountAddr, &previousAD, protocol.Encode(&previousAD))
-            bob.Delete(deleteHash)
+            fmt.Printf("deleting hash %s\n", hex.EncodeToString(deleteHash))
+            exists, err := bob.Delete(deleteHash)
+            fmt.Printf("              del false if no such element exists: %v, err: %v\n", exists, err)
+        } else {
+            fmt.Printf("not deleting hash %v, is empty\n", accountAddr)
         }
 
         var updatedAD trackerdb.BaseAccountData
         updatedAD.SetCoreAccountData(&updatedAccountData)
         addHash := trackerdb.AccountHashBuilderV6(accountAddr, &updatedAD, protocol.Encode(&updatedAD))
-        bob.Add(addHash)
+        fmt.Printf("adding hash %s\n", hex.EncodeToString(addHash))
+        exists, err := bob.Add(addHash)
+        fmt.Printf("              add false if item already exists: %v, err: %v\n", exists, err)
 	}
     return nil
 

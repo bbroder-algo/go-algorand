@@ -1269,6 +1269,7 @@ func (eval *BlockEvaluator) TestingTxnCounter() uint64 {
 
 // Call "endOfBlock" after all the block's rewards and transactions are processed.
 func (eval *BlockEvaluator) endOfBlock() error {
+	eval.l.CommitBobtrie(eval.block.Round())
 	if eval.generate {
 		var err error
 		eval.block.TxnCommitments, err = eval.block.PaysetCommit()
@@ -1277,7 +1278,6 @@ func (eval *BlockEvaluator) endOfBlock() error {
 		}
 
 		// commit the bobtrie round to the trackerdb (commit and evict)
-		eval.l.CommitBobtrie(eval.block.Round())
 		eval.block.Sha256StateCommitment, err = eval.l.GetBobtrie().RootHash()
 		if err != nil {
 			return err
