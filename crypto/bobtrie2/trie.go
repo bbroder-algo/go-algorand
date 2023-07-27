@@ -147,7 +147,7 @@ func (mt *Trie) RootHash() *crypto.Digest {
 	return mt.rootHash
 }
 
-// Trie add
+// Trie Add adds the given key/value pair to the trie.
 func (mt *Trie) Add(key nibbles, value []byte) (err error) {
 	if len(key) == 0 {
 		return errors.New("empty key not allowed")
@@ -168,7 +168,7 @@ func (mt *Trie) Add(key nibbles, value []byte) (err error) {
 	return err
 }
 
-// Delete deletes the given hash to the trie, if such element exists.
+// Delete deletes the given key from the trie, if such element exists.
 // if no such element exists, return false
 func (mt *Trie) Delete(key nibbles) (bool, error) {
 	var err error
