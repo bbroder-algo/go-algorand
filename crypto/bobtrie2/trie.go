@@ -471,17 +471,12 @@ func (en *ExtensionNode) descendDelete(mt *Trie, remainingKey nibbles) (crypto.D
 	if len(shNibbles) == len(en.sharedKey) {
 		shifted := shiftNibbles(remainingKey, len(en.sharedKey))
 		hash, found, err := mt.descendDelete(en.child, shifted)
-		if err == nil && found {
-			// the key was found below this node and deleted.
-			if (hash != crypto.Digest{}) {
-				// child was replaced with a different node.  update the node.
-				hash, err = mt.storeNewExtensionNode(en.sharedKey, hash)
-				return hash, true, err
-			}
-			// return either the updated extension hash or the empty hash
-			return hash, false, err
+		if err == nil && found && (hash != crypto.Digest{}) {
+			// the key was found below this node and deleted,
+			// make a new extension node pointing to its replacement.
+			hash, err = mt.storeNewExtensionNode(en.sharedKey, hash)
 		}
-		// didn't find a node to delete below the node.
+		// returns empty digest if there's nothing left.
 		return hash, found, err
 	}
 	// didn't match the entire extension node.
