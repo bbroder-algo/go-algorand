@@ -20,15 +20,12 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
-
 )
 
 func TestMakeTrie(t *testing.T) {
-    mt, err := MakeTrie()
-    require.NoError(t, err)
-    require.NotNil(t, mt)
-    require.NotNil(t, mt.db)
-    require.Nil(t, mt.root)
+	mt, err := MakeTrie()
+	require.NoError(t, err)
+	require.NotNil(t, mt)
+	require.NotNil(t, mt.db)
+	require.Nil(t, mt.root)
 }
-
-
