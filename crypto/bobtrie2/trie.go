@@ -30,6 +30,10 @@ type Trie struct {
 	rootHash *crypto.Digest
 }
 
+const (
+	MaxKeyLength = 65535
+)
+
 // nibbles are 4-bit values stored in an 8-bit byte
 type nibbles []byte
 
@@ -151,10 +155,76 @@ func (mt *Trie) RootHash() *crypto.Digest {
 	return mt.rootHash
 }
 
+// Make a dot graph of the trie
+func (mt *Trie) DotGraph(keysAdded [][]byte, valuesAdded [][]byte) string {
+	var keys string
+	for i := 0; i < len(keysAdded); i++ {
+		keys += fmt.Sprintf("%x = %x\\n", keysAdded[i], valuesAdded[i])
+	}
+
+	return fmt.Sprintf("digraph trie { key [shape=box, label=\"key/value inserted:\\n%s\"];\n %s }\n", keys, mt.dotGraph(*mt.rootHash))
+}
+func (mt *Trie) dotGraph(hash crypto.Digest) string {
+	var node node
+	var err error
+	nbytes, closer, err := mt.db.Get([]byte(hash.ToSlice()))
+	defer closer.Close()
+	if err != nil {
+		return ""
+	}
+	node, err = deserializeNode(nbytes)
+	if err != nil {
+		return ""
+	}
+
+	switch n := node.(type) {
+	case *RootNode:
+		return fmt.Sprintf("n%s [label=\"root\" shape=box];\n", hash) +
+			fmt.Sprintf("n%s -> n%s;\n", hash, n.child) +
+			mt.dotGraph(n.child)
+	case *LeafNode:
+		ln := n
+		return fmt.Sprintf("n%s [label=\"leaf\\nkeyEnd:%x\\nvalueHash:%s\" shape=box];\n", hash, ln.keyEnd, ln.valueHash)
+	case *ExtensionNode:
+		en := n
+		return fmt.Sprintf("n%s [label=\"extension\\nshKey:%x\" shape=box];\n", hash, en.sharedKey) +
+			fmt.Sprintf("n%s -> n%s;\n", hash, n.child) +
+			mt.dotGraph(n.child)
+	case *BranchNode:
+		bn := n
+		var indexesFilled string
+		indexesFilled = "--"
+		for i, child := range bn.children {
+			if child != (crypto.Digest{}) {
+				indexesFilled += fmt.Sprintf("%x ", i)
+			}
+		}
+		indexesFilled += "--"
+
+		s := fmt.Sprintf("n%s [label=\"branch\\nindexesFilled:%s\\nvalueHash:%s\" shape=box];\n", hash, indexesFilled, bn.valueHash)
+		for _, child := range n.children {
+			if child != (crypto.Digest{}) {
+				s += fmt.Sprintf("n%s -> n%s;\n", hash, child)
+			}
+		}
+		for _, child := range n.children {
+			if child != (crypto.Digest{}) {
+				s += mt.dotGraph(child)
+			}
+		}
+		return s
+	default:
+		return ""
+	}
+}
+
 // Trie Add adds the given key/value pair to the trie.
 func (mt *Trie) Add(key nibbles, value []byte) (err error) {
 	if len(key) == 0 {
 		return errors.New("empty key not allowed")
+	}
+	if len(key) > MaxKeyLength {
+		return errors.New("key too long")
 	}
 
 	var hash crypto.Digest
