@@ -30,10 +30,14 @@ output_pdf="/tmp/output.pdf"
 png_files=()
 
 # Collect PNG files in the /tmp directory and store them in the array
-for png_file in /tmp/*.png; do
+for png_file in /tmp/trie*.png; do
     # Check if the file exists
     if [[ -e "$png_file" ]]; then
         png_files+=("$png_file")
+        filename=$(basename "$png_file")
+        basename="${filename%.png}"
+        echo convert -resize 2480x3508 -gravity center -background white -extent 2480x3508 ${png_file} /tmp/stretch-${basename}.png
+        convert -resize 2480x3508 -gravity center -background white -extent 2480x3508 ${png_file} /tmp/stretch-${basename}.png
     else
         echo "File not found: $png_file"
     fi
@@ -46,6 +50,4 @@ if [[ ${#png_files[@]} -eq 0 ]]; then
 fi
 
 # Use 'convert' to stack the PNG images vertically and create a multi-page PDF
-convert "${png_files[@]}" "$output_pdf"
-
 echo "Conversion completed. Output PDF: $output_pdf"
