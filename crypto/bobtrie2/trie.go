@@ -83,6 +83,9 @@ func equalNibbles(a nibbles, b nibbles) bool {
 }
 
 func shiftNibbles(a nibbles, numNibbles int) nibbles {
+	if numNibbles <= 0 {
+		return a
+	}
 	if numNibbles > len(a) {
 		return nibbles{}
 	}
@@ -522,11 +525,18 @@ func (bn *BranchNode) descendDelete(mt *Trie, pathKey nibbles, remainingKey nibb
 //	3 == leaf, half.        4 == leaf, full
 //	5 == branch
 func deserializeRootNode(data []byte) (*RootNode, error) {
+	if data[0] != 0 {
+		return nil, errors.New("invalid prefix for root node")
+	}
 	rn := &RootNode{}
 	rn.child = crypto.Digest(data[1:33])
 	return rn, nil
 }
 func deserializeExtensionNode(data []byte) (*ExtensionNode, error) {
+	if data[0] != 1 && data[0] != 2 {
+		return nil, errors.New("invalid prefix for extension node")
+	}
+
 	if len(data) < 33 {
 		return nil, errors.New("data too short to be an extension node")
 	}
@@ -543,6 +553,9 @@ func deserializeExtensionNode(data []byte) (*ExtensionNode, error) {
 	return en, nil
 }
 func deserializeBranchNode(data []byte) (*BranchNode, error) {
+	if data[0] != 5 {
+		return nil, errors.New("invalid prefix for branch node")
+	}
 	if len(data) < 545 {
 		return nil, errors.New("data too short to be a branch node")
 	}
@@ -555,6 +568,9 @@ func deserializeBranchNode(data []byte) (*BranchNode, error) {
 	return bn, nil
 }
 func deserializeLeafNode(data []byte) (*LeafNode, error) {
+	if data[0] != 3 && data[0] != 4 {
+		return nil, errors.New("invalid prefix for leaf node")
+	}
 	if len(data) < 33 {
 		return nil, errors.New("data too short to be a leaf node")
 	}
