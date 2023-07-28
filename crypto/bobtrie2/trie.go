@@ -1,4 +1,4 @@
-// Copyright (C) 2019-2023 Algorand, Inc.
+// Copyright (C) 2018-2023 Algorand, Inc.
 // This file is part of go-algorand
 //
 // go-algorand is free software: you can redistribute it and/or modify
@@ -83,9 +83,10 @@ func equalNibbles(a nibbles, b nibbles) bool {
 }
 
 func shiftNibbles(a nibbles, numNibbles int) nibbles {
-	if len(a) > numNibbles {
+	if numNibbles > len(a) {
 		return nibbles{}
 	}
+
 	return a[numNibbles:]
 }
 
