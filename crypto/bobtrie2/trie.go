@@ -436,7 +436,7 @@ func (en *ExtensionNode) descendAdd(mt *Trie, pathKey nibbles, remainingKey nibb
 		// if the key is no more, store it in the branch node's value hash slot.
 		branchHash = valueHash
 	}
-	hash, err := mt.storeNewBranchNode(pathKey, children, branchHash)
+	hash, err := mt.storeNewBranchNode(append(pathKey, shNibbles...), children, branchHash)
 
 	// the shared bits of the extension node get smaller
 	if err == nil && len(shNibbles) > 0 {
