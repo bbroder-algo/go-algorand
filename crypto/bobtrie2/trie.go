@@ -275,7 +275,7 @@ func (rn *RootNode) descendAdd(mt *Trie, pathKey nibbles, remainingKey nibbles, 
 	var hash crypto.Digest
 	if rn.child == (crypto.Digest{}) {
 		// Root node with a blank crypto digest in the child.  Make a leaf node.
-		hash, err = mt.storeNewLeafNode(append(pathKey, remainingKey...), remainingKey, valueHash)
+		hash, err = mt.storeNewLeafNode(remainingKey, remainingKey, valueHash)
 	} else {
 		hash, err = mt.descendAdd(rn.child, pathKey, remainingKey, valueHash)
 	}
