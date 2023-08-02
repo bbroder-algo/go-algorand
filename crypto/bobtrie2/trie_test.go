@@ -44,7 +44,7 @@ func TestTrieAdd4mFrom2m(t *testing.T) {
 	require.NoError(t, err)
 	verifyNewTrie(t, mt)
 	var accts [][]byte
-	pairs := 8000000
+	pairs := 2_000_000
 	fmt.Println("Generating", pairs, "random key/value pairs")
 	accts = make([][]byte, 0, pairs)
 	for m := 0; m < pairs; m++ {
@@ -56,8 +56,8 @@ func TestTrieAdd4mFrom2m(t *testing.T) {
 		accts = append(accts, k)
 	}
 	epoch := time.Now().Truncate(time.Millisecond)
-	batchSize := 250000
-	total := 40000000
+	batchSize := 250_000
+	total := 40_000_000
 	fmt.Println("Adding", total, "random key/value pairs in batches of", batchSize, "at", epoch)
 	for m := 0; m < total; m++ {
 		epoch := time.Now().Truncate(time.Millisecond)
