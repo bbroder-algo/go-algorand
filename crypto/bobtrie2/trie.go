@@ -20,10 +20,10 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	//    "io"
 	"github.com/algorand/go-algorand/crypto"
 	"github.com/cockroachdb/pebble"
 	"github.com/cockroachdb/pebble/vfs"
+	"io"
 	"runtime/debug"
 )
 
@@ -196,37 +196,37 @@ func (mt *Trie) ClearPending() {
 }
 
 func (mt *Trie) CommitPending() error {
-	//	b := mt.db.NewBatch()
-	//	options := &pebble.WriteOptions{Sync: true}
-	//	for k, v := range mt.sets {
-	//		err := mt.db.Set(k[:], v, pebble.Sync)
-	//err := b.Set(k[:], v, options)
-	//		if err != nil {
-	//			return err
-	//		}
-	//
-	//	}
-	//	for k := range mt.dels {
-	//		err := mt.db.Delete(k[:], pebble.Sync)
-	//		err := b.Delete(k[:], options)
-	//		if err != nil {
-	//			return err
-	//		}
-	//	}
-	//    err := b.SyncWait()
-	//	err := mt.db.Apply(b, options)
-	//	if err != nil {
-	//		return err
-	//	}
-	//	err = b.Close()
-	//	if err != nil {
-	//		return err
-	//	}
+	//    b := mt.db.NewBatch()
+	//    options := &pebble.WriteOptions{Sync: true}
+	for k, v := range mt.sets {
+		err := mt.db.Set(k[:], v, pebble.Sync)
+		//        err := b.Set(k[:], v, options)
+		if err != nil {
+			return err
+		}
 
-	//	if mt.pendingRoot != nil {
-	//		mt.rootHash = mt.pendingRoot
-	//	}
-	//	mt.ClearPending()
+	}
+	for k := range mt.dels {
+		err := mt.db.Delete(k[:], pebble.Sync)
+		//    	err := b.Delete(k[:], options)
+		if err != nil {
+			return err
+		}
+	}
+	//       err := b.SyncWait()
+	//    err := mt.db.Apply(b, options)
+	//    if err != nil {
+	//    	return err
+	//    }
+	//    err = b.Close()
+	//    if err != nil {
+	//    	return err
+	//    }
+
+	if mt.pendingRoot != nil {
+		mt.rootHash = mt.pendingRoot
+	}
+	mt.ClearPending()
 
 	return nil
 }
@@ -354,6 +354,7 @@ func (mt *Trie) get(node crypto.Digest) ([]byte, error) {
 	}
 	var nbytes []byte
 	var ok bool
+	var err error
 	if nbytes, ok = mt.sets[node]; !ok {
 		if _, ok = mt.dels[node]; ok {
 			return nil, errors.New(fmt.Sprintf("node %x deleted", node))
@@ -361,7 +362,8 @@ func (mt *Trie) get(node crypto.Digest) ([]byte, error) {
 
 		if nbytes, ok = mt.gets[node]; !ok {
 			stats.dbgets++
-			nbytes, closer, err := mt.db.Get([]byte(node.ToSlice()))
+			var closer io.Closer
+			nbytes, closer, err = mt.db.Get([]byte(node.ToSlice()))
 			if err != nil {
 				return nil, err
 			}
