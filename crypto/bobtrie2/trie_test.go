@@ -22,11 +22,63 @@ import (
 	"github.com/algorand/go-algorand/crypto"
 	"github.com/stretchr/testify/require"
 	"os"
+	"runtime"
 	"time"
 	//    "strconv"
 	"math/rand"
 	"testing"
 )
+
+// var x uint32 = 1234567890
+var x uint32 = 1234567891
+
+func pseudoRand() uint32 {
+	x ^= x << 13
+	x ^= x >> 17
+	x ^= x << 5
+	return x
+}
+
+func TestTrieAdd4mFrom2m(t *testing.T) {
+	mt, err := MakeTrie()
+	require.NoError(t, err)
+	verifyNewTrie(t, mt)
+	var accts [][]byte
+	pairs := 8000000
+	fmt.Println("Generating", pairs, "random key/value pairs")
+	accts = make([][]byte, 0, pairs)
+	for m := 0; m < pairs; m++ {
+		k := make([]byte, 32)
+		rand.Read(k)
+		for j := range k {
+			k[j] = k[j] & 0x0f
+		}
+		accts = append(accts, k)
+	}
+	epoch := time.Now().Truncate(time.Millisecond)
+	batchSize := 250000
+	total := 40000000
+	fmt.Println("Adding", total, "random key/value pairs in batches of", batchSize, "at", epoch)
+	for m := 0; m < total; m++ {
+		epoch := time.Now().Truncate(time.Millisecond)
+		fmt.Println("adding ", batchSize, " random key/value pairs", epoch)
+		var runtime_info runtime.MemStats
+		runtime.ReadMemStats(&runtime_info)
+		fmt.Println("runtime_info.Alloc:", runtime_info.Alloc, "runtime_info.TotalAlloc:", runtime_info.TotalAlloc, "runtime_info.HeapAlloc:", runtime_info.HeapAlloc, "runtime_info.HeapSys:", runtime_info.HeapSys, "runtime_info.HeapIdle:", runtime_info.HeapIdle, "runtime_info.HeapReleased:", runtime_info.HeapReleased, "runtime_info.HeapObjects:", runtime_info.HeapObjects)
+		for i := 0; i < batchSize; i++ {
+			m++
+			rand_k := pseudoRand() % uint32(pairs)
+			rand_v := pseudoRand() % uint32(pairs)
+			require.NoError(t, mt.Add(accts[rand_k], accts[rand_v]))
+		}
+		epoch = time.Now().Truncate(time.Millisecond)
+		fmt.Println("committing:", epoch, " m:", m, "\n", stats.String(), "len(mt.sets):", len(mt.sets), "len(mt.gets):", len(mt.gets), "len(mt.dels):", len(mt.dels))
+		require.NoError(t, mt.CommitPending())
+		epoch = time.Now().Truncate(time.Millisecond)
+		fmt.Println("committed now:", epoch, " m:", m, "\n", stats.String(), "len(mt.sets):", len(mt.sets), "len(mt.gets):", len(mt.gets), "len(mt.dels):", len(mt.dels))
+	}
+	fmt.Println("Done", total, "random key/value pair insertions from ", pairs, "keys")
+}
 
 func verifyNewTrie(t *testing.T, mt *Trie) {
 	require.NotNil(t, mt)
@@ -163,49 +215,6 @@ func buildDotGraph(t *testing.T, mt *Trie, keys [][]byte, values [][]byte, fn st
 	require.NoError(t, err)
 	defer file.Close()
 	_, err = file.WriteString(dot)
-}
-
-var x uint32 = 1234567890
-
-func pseudoRand() uint32 {
-	x ^= x << 13
-	x ^= x >> 17
-	x ^= x << 5
-	return x
-}
-
-func TestTrieAdd4mFrom2m(t *testing.T) {
-	mt, err := MakeTrie()
-	require.NoError(t, err)
-	verifyNewTrie(t, mt)
-	fmt.Println("Generating 2m random key/value pairs")
-	var accts [][]byte
-	accts = make([][]byte, 0, 2000000)
-	for m := 0; m < 2000000; m++ {
-		k := make([]byte, 32)
-		rand.Read(k)
-		for j := range k {
-			k[j] = k[j] & 0x0f
-		}
-		accts = append(accts, k)
-	}
-	fmt.Println("Adding 4m random key/value pairs")
-	batchSize := 250000
-	total := 4000000
-	for m := 0; m < total/batchSize; m++ {
-		fmt.Println("adding ", batchSize, " random key/value pairs")
-		for i := 0; i < batchSize; i++ {
-			rand_k := pseudoRand() % 2000000
-			rand_v := pseudoRand() % 2000000
-			mt.Add(accts[rand_k], accts[rand_v])
-		}
-		epoch := time.Now().Unix()
-		fmt.Println("committing:", epoch, " m:", m, "\n", stats.String())
-		mt.CommitPending()
-		epoch = time.Now().Unix()
-		fmt.Println("committed now:", epoch, " m:", m, "\n", stats.String())
-	}
-	fmt.Println("Done 4m random key/value pairs")
 }
 
 func TestTrieAdd1kEveryTwoSeconds(t *testing.T) {

@@ -24,7 +24,10 @@ import (
 	"github.com/algorand/go-algorand/crypto"
 	"github.com/cockroachdb/pebble"
 	"github.com/cockroachdb/pebble/vfs"
+	"runtime/debug"
 )
+
+var debugTrie = false
 
 type Trie struct {
 	db          *pebble.DB
@@ -174,7 +177,6 @@ func MakeTrie() (*Trie, error) {
 	mt := &Trie{db: db, rootHash: nil}
 	mt.ClearPending()
 
-	//    mt.sillyDB = make(map[crypto.Digest][]byte,)
 	return mt, nil
 }
 
@@ -194,43 +196,47 @@ func (mt *Trie) ClearPending() {
 }
 
 func (mt *Trie) CommitPending() error {
-	b := mt.db.NewBatch()
-	options := &pebble.WriteOptions{Sync: true}
-	for k, v := range mt.sets {
-		//		err := mt.db.Set(k[:], v, pebble.Sync)
-		err := b.Set(k[:], v, options)
-		if err != nil {
-			return err
-		}
-
-	}
-	for k := range mt.dels {
-		//		err := mt.db.Delete(k[:], pebble.Sync)
-		err := b.Delete(k[:], options)
-		if err != nil {
-			return err
-		}
-	}
+	//	b := mt.db.NewBatch()
+	//	options := &pebble.WriteOptions{Sync: true}
+	//	for k, v := range mt.sets {
+	//		err := mt.db.Set(k[:], v, pebble.Sync)
+	//err := b.Set(k[:], v, options)
+	//		if err != nil {
+	//			return err
+	//		}
+	//
+	//	}
+	//	for k := range mt.dels {
+	//		err := mt.db.Delete(k[:], pebble.Sync)
+	//		err := b.Delete(k[:], options)
+	//		if err != nil {
+	//			return err
+	//		}
+	//	}
 	//    err := b.SyncWait()
-	err := mt.db.Apply(b, options)
-	if err != nil {
-		return err
-	}
-	err = b.Close()
-	if err != nil {
-		return err
-	}
+	//	err := mt.db.Apply(b, options)
+	//	if err != nil {
+	//		return err
+	//	}
+	//	err = b.Close()
+	//	if err != nil {
+	//		return err
+	//	}
 
-	if mt.pendingRoot != nil {
-		mt.rootHash = mt.pendingRoot
-	}
-	mt.ClearPending()
+	//	if mt.pendingRoot != nil {
+	//		mt.rootHash = mt.pendingRoot
+	//	}
+	//	mt.ClearPending()
 
 	return nil
 }
 
 // Trie Add adds the given key/value pair to the trie.
 func (mt *Trie) Add(key nibbles, value []byte) (err error) {
+	if debugTrie {
+		fmt.Printf("Add %v %v\n", key, value)
+	}
+
 	if len(key) == 0 {
 		return errors.New("empty key not allowed")
 	}
@@ -297,7 +303,6 @@ func (mt *Trie) storeNewLeafNode(key nibbles, keyEnd nibbles, valueHash crypto.D
 	hash := crypto.Hash(append(key, data...))
 	stats.leafnodesets++
 	//	err = mt.db.Set([]byte(hash.ToSlice()), data, pebble.NoSync)
-	//    mt.sillyDB[hash] = data
 	mt.set(hash, data)
 	return hash, err
 }
@@ -312,7 +317,6 @@ func (mt *Trie) storeNewRootNode(child crypto.Digest) (crypto.Digest, error) {
 	hash := crypto.Hash(data)
 	stats.rootnodesets++
 	//	err = mt.db.Set([]byte(hash.ToSlice()), data, pebble.NoSync)
-	//    mt.sillyDB[hash] = data
 	mt.set(hash, data)
 	return hash, err
 }
@@ -326,7 +330,6 @@ func (mt *Trie) storeNewExtensionNode(sharedKey nibbles, child crypto.Digest) (c
 	hash := crypto.Hash(data)
 	stats.extnodesets++
 	//	err = mt.db.Set([]byte(hash.ToSlice()), data, pebble.NoSync)
-	//    mt.sillyDB[hash] = data
 	mt.set(hash, data)
 	return hash, err
 }
@@ -340,18 +343,20 @@ func (mt *Trie) storeNewBranchNode(key nibbles, children [16]crypto.Digest, valu
 	hash := crypto.Hash(append(key, data...))
 	stats.branchnodesets++
 	//	err = mt.db.Set([]byte(hash.ToSlice()), data, pebble.NoSync)
-	//    mt.sillyDB[hash] = data
 	//    mt.sets[hash] = data
 	mt.set(hash, data)
 	return hash, err
 }
 
 func (mt *Trie) get(node crypto.Digest) ([]byte, error) {
+	if debugTrie {
+		fmt.Printf("get %x\n", node)
+	}
 	var nbytes []byte
 	var ok bool
 	if nbytes, ok = mt.sets[node]; !ok {
 		if _, ok = mt.dels[node]; ok {
-			return nil, errors.New("node deleted")
+			return nil, errors.New(fmt.Sprintf("node %x deleted", node))
 		}
 
 		if nbytes, ok = mt.gets[node]; !ok {
@@ -361,6 +366,7 @@ func (mt *Trie) get(node crypto.Digest) ([]byte, error) {
 				return nil, err
 			}
 			mt.gets[node] = make([]byte, len(nbytes))
+
 			copy(mt.gets[node], nbytes)
 			closer.Close()
 			nbytes, _ = mt.gets[node]
@@ -369,11 +375,20 @@ func (mt *Trie) get(node crypto.Digest) ([]byte, error) {
 	return nbytes, nil
 }
 func (mt *Trie) del(node crypto.Digest) {
-	delete(mt.sets, node)
+	if debugTrie {
+		fmt.Printf("del %x\n", node)
+	}
 	delete(mt.gets, node)
-	mt.dels[node] = true
+	if _, ok := mt.sets[node]; ok {
+		delete(mt.sets, node)
+	} else {
+		mt.dels[node] = true
+	}
 }
 func (mt *Trie) set(node crypto.Digest, data []byte) {
+	if debugTrie {
+		fmt.Printf("set %x\n", node)
+	}
 	mt.sets[node] = data
 	delete(mt.dels, node)
 	delete(mt.gets, node)
@@ -383,6 +398,9 @@ func (mt *Trie) set(node crypto.Digest, data []byte) {
 // It returns the hash of the replacement node, or an error.
 func (mt *Trie) descendAdd(node crypto.Digest, pathKey nibbles, remainingKey nibbles, valueHash crypto.Digest) (crypto.Digest, error) {
 	var err error
+	if debugTrie {
+		fmt.Printf("descendAdd %x %x %x %x\n", node, pathKey, remainingKey, valueHash)
+	}
 
 	nbytes, err := mt.get(node)
 	if err != nil {
@@ -394,9 +412,8 @@ func (mt *Trie) descendAdd(node crypto.Digest, pathKey nibbles, remainingKey nib
 		return crypto.Digest{}, err
 	}
 	hash, err := n.descendAdd(mt, pathKey, remainingKey, valueHash)
-	if err == nil {
+	if err == nil && node != hash {
 		//		mt.db.Delete([]byte(node.ToSlice()), pebble.NoSync)
-		//        delete(mt.sillyDB, node)
 		mt.del(node)
 	}
 	return hash, err
@@ -407,7 +424,6 @@ func (mt *Trie) descendDelete(node crypto.Digest, pathKey nibbles, remainingKey 
 	var err error
 	//	nbytes, closer, err := mt.db.Get([]byte(node.ToSlice()))
 	//	defer closer.Close()
-	//    nbytes := mt.sillyDB[node]
 	//	if err != nil {
 	//		return crypto.Digest{}, false, err
 	//	}
@@ -423,9 +439,8 @@ func (mt *Trie) descendDelete(node crypto.Digest, pathKey nibbles, remainingKey 
 	}
 
 	hash, found, err := n.descendDelete(mt, pathKey, remainingKey)
-	if err == nil && found {
+	if found && hash != node && err == nil {
 		//		mt.db.Delete([]byte(node.ToSlice()), pebble.NoSync)
-		//        delete(mt.sillyDB, node)
 		mt.del(node)
 	}
 	return hash, found, err
@@ -433,6 +448,9 @@ func (mt *Trie) descendDelete(node crypto.Digest, pathKey nibbles, remainingKey 
 
 // Node methods for adding a new key-value to the trie
 func (rn *RootNode) descendAdd(mt *Trie, pathKey nibbles, remainingKey nibbles, valueHash crypto.Digest) (crypto.Digest, error) {
+	if debugTrie {
+		fmt.Printf("RootNode descendAdd %x %x %x %x\n", rn.child, pathKey, remainingKey, valueHash)
+	}
 	var err error
 	var hash crypto.Digest
 	if rn.child == (crypto.Digest{}) {
@@ -452,6 +470,9 @@ func (rn *RootNode) descendAdd(mt *Trie, pathKey nibbles, remainingKey nibbles, 
 }
 
 func (bn *BranchNode) descendAdd(mt *Trie, pathKey nibbles, remainingKey nibbles, valueHash crypto.Digest) (crypto.Digest, error) {
+	if debugTrie {
+		fmt.Printf("BranchNode descendAdd %x %x %x %x\n", bn.children, pathKey, remainingKey, valueHash)
+	}
 	if len(remainingKey) == 0 {
 		// If we're here, then set the value hash in this node, overwriting the old one.
 		return mt.storeNewBranchNode(pathKey, bn.children, valueHash)
@@ -479,6 +500,9 @@ func (bn *BranchNode) descendAdd(mt *Trie, pathKey nibbles, remainingKey nibbles
 }
 
 func (ln *LeafNode) descendAdd(mt *Trie, pathKey nibbles, remainingKey nibbles, valueHash crypto.Digest) (crypto.Digest, error) {
+	if debugTrie {
+		fmt.Printf("LeafNode descendAdd %x %x %x %x\n", ln.keyEnd, pathKey, remainingKey, valueHash)
+	}
 	if equalNibbles(ln.keyEnd, remainingKey) {
 		// The two keys are the same. Replace the value.
 		return mt.storeNewLeafNode(append(pathKey, remainingKey...), remainingKey, valueHash)
@@ -549,6 +573,9 @@ func (ln *LeafNode) descendAdd(mt *Trie, pathKey nibbles, remainingKey nibbles, 
 }
 
 func (en *ExtensionNode) descendAdd(mt *Trie, pathKey nibbles, remainingKey nibbles, valueHash crypto.Digest) (crypto.Digest, error) {
+	if debugTrie {
+		fmt.Printf("ExtensionNode descendAdd %x %x %x %x\n", en.sharedKey, pathKey, remainingKey, valueHash)
+	}
 	var err error
 	// Calculate the shared nibbles between the key we're adding and this extension node.
 	shNibbles := sharedNibbles(en.sharedKey, remainingKey)
@@ -744,6 +771,7 @@ func deserializeLeafNode(data []byte) (*LeafNode, error) {
 }
 func deserializeNode(nbytes []byte) (node, error) {
 	if len(nbytes) == 0 {
+		debug.PrintStack()
 		return nil, fmt.Errorf("empty node")
 	}
 	switch nbytes[0] {
