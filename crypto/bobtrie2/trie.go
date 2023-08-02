@@ -194,21 +194,35 @@ func (mt *Trie) ClearPending() {
 }
 
 func (mt *Trie) CommitPending() error {
+	b := mt.db.NewBatch()
+	options := &pebble.WriteOptions{Sync: true}
 	for k, v := range mt.sets {
-		err := mt.db.Set(k[:], v, pebble.Sync)
+		//		err := mt.db.Set(k[:], v, pebble.Sync)
+		err := b.Set(k[:], v, options)
 		if err != nil {
 			return err
 		}
 
 	}
-	if mt.pendingRoot != nil {
-		mt.rootHash = mt.pendingRoot
-	}
 	for k := range mt.dels {
-		err := mt.db.Delete(k[:], pebble.Sync)
+		//		err := mt.db.Delete(k[:], pebble.Sync)
+		err := b.Delete(k[:], options)
 		if err != nil {
 			return err
 		}
+	}
+	//    err := b.SyncWait()
+	err := mt.db.Apply(b, options)
+	if err != nil {
+		return err
+	}
+	err = b.Close()
+	if err != nil {
+		return err
+	}
+
+	if mt.pendingRoot != nil {
+		mt.rootHash = mt.pendingRoot
 	}
 	mt.ClearPending()
 
