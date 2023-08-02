@@ -20,19 +20,43 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	//    "io"
 	"github.com/algorand/go-algorand/crypto"
 	"github.com/cockroachdb/pebble"
 	"github.com/cockroachdb/pebble/vfs"
 )
 
 type Trie struct {
-	db       *pebble.DB
-	rootHash *crypto.Digest
+	db          *pebble.DB
+	rootHash    *crypto.Digest
+	pendingRoot *crypto.Digest
+	sets        map[crypto.Digest][]byte
+	gets        map[crypto.Digest][]byte
+	dels        map[crypto.Digest]bool
 }
 
 const (
 	MaxKeyLength = 65535
 )
+
+type triestats struct {
+	extensionNodes int
+	branchNodes    int
+	dbgets         int
+	leafnodesets   int
+	branchnodesets int
+	extnodesets    int
+	rootnodesets   int
+	dbdeletes      int
+	cryptohashes   int
+}
+
+var stats triestats
+
+func (s triestats) String() string {
+	return fmt.Sprintf("extensionNodes: %d, branchNodes: %d, dbgets: %d, leafnodesets: %d, branchnodesets: %d, extnodesets: %d, rootnodesets: %d, dbdeletes: %d, cryptohashes: %d",
+		s.extensionNodes, s.branchNodes, s.dbgets, s.leafnodesets, s.branchnodesets, s.extnodesets, s.rootnodesets, s.dbdeletes, s.cryptohashes)
+}
 
 // nibbles are 4-bit values stored in an 8-bit byte
 type nibbles []byte
@@ -143,79 +167,52 @@ type BranchNode struct {
 // MakeTrie creates a merkle trie
 func MakeTrie() (*Trie, error) {
 	db, err := pebble.Open("", &pebble.Options{FS: vfs.NewMem()})
+	//	db, err := pebble.Open("/tmp/blahdb/", &pebble.Options{})
 	if err != nil {
 		return nil, err
 	}
 	mt := &Trie{db: db, rootHash: nil}
+	mt.ClearPending()
+
+	//    mt.sillyDB = make(map[crypto.Digest][]byte,)
 	return mt, nil
 }
 
 // Provide the root hash for this trie
 func (mt *Trie) RootHash() *crypto.Digest {
+	if mt.pendingRoot != nil {
+		return mt.pendingRoot
+	}
 	return mt.rootHash
 }
 
-// Make a dot graph of the trie
-func (mt *Trie) DotGraph(keysAdded [][]byte, valuesAdded [][]byte) string {
-	var keys string
-	for i := 0; i < len(keysAdded); i++ {
-		keys += fmt.Sprintf("%x = %x\\n", keysAdded[i], valuesAdded[i])
-	}
-
-	return fmt.Sprintf("digraph trie { key [shape=box, label=\"key/value inserted:\\n%s\"];\n %s }\n", keys, mt.dotGraph(*mt.rootHash))
+func (mt *Trie) ClearPending() {
+	mt.sets = make(map[crypto.Digest][]byte)
+	mt.gets = make(map[crypto.Digest][]byte)
+	mt.dels = make(map[crypto.Digest]bool)
+	mt.pendingRoot = nil
 }
-func (mt *Trie) dotGraph(hash crypto.Digest) string {
-	var node node
-	var err error
-	nbytes, closer, err := mt.db.Get([]byte(hash.ToSlice()))
-	defer closer.Close()
-	if err != nil {
-		return ""
-	}
-	node, err = deserializeNode(nbytes)
-	if err != nil {
-		return ""
-	}
 
-	switch n := node.(type) {
-	case *RootNode:
-		return fmt.Sprintf("n%s [label=\"root\" shape=box];\n", hash) +
-			fmt.Sprintf("n%s -> n%s;\n", hash, n.child) +
-			mt.dotGraph(n.child)
-	case *LeafNode:
-		ln := n
-		return fmt.Sprintf("n%s [label=\"leaf\\nkeyEnd:%x\\nvalueHash:%s\" shape=box];\n", hash, ln.keyEnd, ln.valueHash)
-	case *ExtensionNode:
-		en := n
-		return fmt.Sprintf("n%s [label=\"extension\\nshKey:%x\" shape=box];\n", hash, en.sharedKey) +
-			fmt.Sprintf("n%s -> n%s;\n", hash, n.child) +
-			mt.dotGraph(n.child)
-	case *BranchNode:
-		bn := n
-		var indexesFilled string
-		indexesFilled = "--"
-		for i, child := range bn.children {
-			if child != (crypto.Digest{}) {
-				indexesFilled += fmt.Sprintf("%x ", i)
-			}
+func (mt *Trie) CommitPending() error {
+	for k, v := range mt.sets {
+		err := mt.db.Set(k[:], v, pebble.Sync)
+		if err != nil {
+			return err
 		}
-		indexesFilled += "--"
 
-		s := fmt.Sprintf("n%s [label=\"branch\\nindexesFilled:%s\\nvalueHash:%s\" shape=box];\n", hash, indexesFilled, bn.valueHash)
-		for _, child := range n.children {
-			if child != (crypto.Digest{}) {
-				s += fmt.Sprintf("n%s -> n%s;\n", hash, child)
-			}
-		}
-		for _, child := range n.children {
-			if child != (crypto.Digest{}) {
-				s += mt.dotGraph(child)
-			}
-		}
-		return s
-	default:
-		return ""
 	}
+	if mt.pendingRoot != nil {
+		mt.rootHash = mt.pendingRoot
+	}
+	for k := range mt.dels {
+		err := mt.db.Delete(k[:], pebble.Sync)
+		if err != nil {
+			return err
+		}
+	}
+	mt.ClearPending()
+
+	return nil
 }
 
 // Trie Add adds the given key/value pair to the trie.
@@ -228,16 +225,25 @@ func (mt *Trie) Add(key nibbles, value []byte) (err error) {
 	}
 
 	var hash crypto.Digest
-	if mt.rootHash == nil {
+	if mt.rootHash == nil && mt.pendingRoot == nil {
 		hash, err = mt.storeNewRootNode(crypto.Digest{})
 		if err != nil {
 			return err
 		}
-		mt.rootHash = &hash
+		mt.pendingRoot = &hash
 	}
-	hash, err = mt.descendAdd(*mt.rootHash, []byte{}, key, crypto.Hash(value))
+
+	var rootHash crypto.Digest
+	if mt.pendingRoot != nil {
+		rootHash = *mt.pendingRoot
+	} else {
+		rootHash = *mt.rootHash
+	}
+
+	stats.cryptohashes++
+	hash, err = mt.descendAdd(rootHash, []byte{}, key, crypto.Hash(value))
 	if err == nil {
-		mt.rootHash = &hash
+		mt.pendingRoot = &hash
 	}
 	return err
 }
@@ -249,12 +255,19 @@ func (mt *Trie) Delete(key nibbles) (bool, error) {
 	if len(key) == 0 {
 		return false, errors.New("empty key not allowed")
 	}
-	if mt.rootHash == nil {
+	if mt.rootHash == nil && mt.pendingRoot == nil {
 		return false, nil
 	}
-	hash, found, err := mt.descendDelete(*mt.rootHash, []byte{}, key)
+
+	var rootHash crypto.Digest
+	if mt.pendingRoot != nil {
+		rootHash = *mt.pendingRoot
+	} else {
+		rootHash = *mt.rootHash
+	}
+	hash, found, err := mt.descendDelete(rootHash, []byte{}, key)
 	if err == nil && found {
-		mt.rootHash = &hash
+		mt.pendingRoot = &hash
 	}
 	return found, err
 }
@@ -266,8 +279,12 @@ func (mt *Trie) storeNewLeafNode(key nibbles, keyEnd nibbles, valueHash crypto.D
 	if err != nil {
 		return crypto.Digest{}, err
 	}
+	stats.cryptohashes++
 	hash := crypto.Hash(append(key, data...))
-	err = mt.db.Set([]byte(hash.ToSlice()), data, pebble.Sync)
+	stats.leafnodesets++
+	//	err = mt.db.Set([]byte(hash.ToSlice()), data, pebble.NoSync)
+	//    mt.sillyDB[hash] = data
+	mt.set(hash, data)
 	return hash, err
 }
 
@@ -277,8 +294,12 @@ func (mt *Trie) storeNewRootNode(child crypto.Digest) (crypto.Digest, error) {
 	if err != nil {
 		return crypto.Digest{}, err
 	}
+	stats.cryptohashes++
 	hash := crypto.Hash(data)
-	err = mt.db.Set([]byte(hash.ToSlice()), data, pebble.Sync)
+	stats.rootnodesets++
+	//	err = mt.db.Set([]byte(hash.ToSlice()), data, pebble.NoSync)
+	//    mt.sillyDB[hash] = data
+	mt.set(hash, data)
 	return hash, err
 }
 func (mt *Trie) storeNewExtensionNode(sharedKey nibbles, child crypto.Digest) (crypto.Digest, error) {
@@ -287,8 +308,12 @@ func (mt *Trie) storeNewExtensionNode(sharedKey nibbles, child crypto.Digest) (c
 	if err != nil {
 		return crypto.Digest{}, err
 	}
+	stats.cryptohashes++
 	hash := crypto.Hash(data)
-	err = mt.db.Set([]byte(hash.ToSlice()), data, pebble.Sync)
+	stats.extnodesets++
+	//	err = mt.db.Set([]byte(hash.ToSlice()), data, pebble.NoSync)
+	//    mt.sillyDB[hash] = data
+	mt.set(hash, data)
 	return hash, err
 }
 func (mt *Trie) storeNewBranchNode(key nibbles, children [16]crypto.Digest, valueHash crypto.Digest) (crypto.Digest, error) {
@@ -297,9 +322,47 @@ func (mt *Trie) storeNewBranchNode(key nibbles, children [16]crypto.Digest, valu
 	if err != nil {
 		return crypto.Digest{}, err
 	}
+	stats.cryptohashes++
 	hash := crypto.Hash(append(key, data...))
-	err = mt.db.Set([]byte(hash.ToSlice()), data, pebble.Sync)
+	stats.branchnodesets++
+	//	err = mt.db.Set([]byte(hash.ToSlice()), data, pebble.NoSync)
+	//    mt.sillyDB[hash] = data
+	//    mt.sets[hash] = data
+	mt.set(hash, data)
 	return hash, err
+}
+
+func (mt *Trie) get(node crypto.Digest) ([]byte, error) {
+	var nbytes []byte
+	var ok bool
+	if nbytes, ok = mt.sets[node]; !ok {
+		if _, ok = mt.dels[node]; ok {
+			return nil, errors.New("node deleted")
+		}
+
+		if nbytes, ok = mt.gets[node]; !ok {
+			stats.dbgets++
+			nbytes, closer, err := mt.db.Get([]byte(node.ToSlice()))
+			if err != nil {
+				return nil, err
+			}
+			mt.gets[node] = make([]byte, len(nbytes))
+			copy(mt.gets[node], nbytes)
+			closer.Close()
+			nbytes, _ = mt.gets[node]
+		}
+	}
+	return nbytes, nil
+}
+func (mt *Trie) del(node crypto.Digest) {
+	delete(mt.sets, node)
+	delete(mt.gets, node)
+	mt.dels[node] = true
+}
+func (mt *Trie) set(node crypto.Digest, data []byte) {
+	mt.sets[node] = data
+	delete(mt.dels, node)
+	delete(mt.gets, node)
 }
 
 // Trie descendAdd descends down the trie, adding the valueHash to the node at the end of the key.
@@ -307,18 +370,20 @@ func (mt *Trie) storeNewBranchNode(key nibbles, children [16]crypto.Digest, valu
 func (mt *Trie) descendAdd(node crypto.Digest, pathKey nibbles, remainingKey nibbles, valueHash crypto.Digest) (crypto.Digest, error) {
 	var err error
 
-	nbytes, closer, err := mt.db.Get([]byte(node.ToSlice()))
-	defer closer.Close()
+	nbytes, err := mt.get(node)
 	if err != nil {
 		return crypto.Digest{}, err
 	}
+
 	n, err := deserializeNode(nbytes)
 	if err != nil {
 		return crypto.Digest{}, err
 	}
 	hash, err := n.descendAdd(mt, pathKey, remainingKey, valueHash)
 	if err == nil {
-		mt.db.Delete([]byte(node.ToSlice()), pebble.Sync)
+		//		mt.db.Delete([]byte(node.ToSlice()), pebble.NoSync)
+		//        delete(mt.sillyDB, node)
+		mt.del(node)
 	}
 	return hash, err
 }
@@ -326,11 +391,18 @@ func (mt *Trie) descendAdd(node crypto.Digest, pathKey nibbles, remainingKey nib
 // Trie descendDelete descends down the trie, deleting the valueHash to the node at the end of the key.
 func (mt *Trie) descendDelete(node crypto.Digest, pathKey nibbles, remainingKey nibbles) (crypto.Digest, bool, error) {
 	var err error
-	nbytes, closer, err := mt.db.Get([]byte(node.ToSlice()))
-	defer closer.Close()
+	//	nbytes, closer, err := mt.db.Get([]byte(node.ToSlice()))
+	//	defer closer.Close()
+	//    nbytes := mt.sillyDB[node]
+	//	if err != nil {
+	//		return crypto.Digest{}, false, err
+	//	}
+
+	nbytes, err := mt.get(node)
 	if err != nil {
 		return crypto.Digest{}, false, err
 	}
+
 	n, err := deserializeNode(nbytes)
 	if err != nil {
 		return crypto.Digest{}, false, err
@@ -338,7 +410,9 @@ func (mt *Trie) descendDelete(node crypto.Digest, pathKey nibbles, remainingKey 
 
 	hash, found, err := n.descendDelete(mt, pathKey, remainingKey)
 	if err == nil && found {
-		mt.db.Delete([]byte(node.ToSlice()), pebble.Sync)
+		//		mt.db.Delete([]byte(node.ToSlice()), pebble.NoSync)
+		//        delete(mt.sillyDB, node)
+		mt.del(node)
 	}
 	return hash, found, err
 }
@@ -716,4 +790,71 @@ func serializeLeafNode(ln *LeafNode) ([]byte, error) {
 	copy(data[1:33], ln.valueHash[:])
 	copy(data[33:], pack)
 	return data, nil
+}
+
+// Make a dot graph of the trie
+func (mt *Trie) DotGraph(keysAdded [][]byte, valuesAdded [][]byte) string {
+	var keys string
+	for i := 0; i < len(keysAdded); i++ {
+		keys += fmt.Sprintf("%x = %x\\n", keysAdded[i], valuesAdded[i])
+	}
+	fmt.Printf("rootHash: %x\n", mt.rootHash)
+	fmt.Printf("pendingRoot: %x\n", mt.pendingRoot)
+	rootHash := *(mt.RootHash())
+
+	return fmt.Sprintf("digraph trie { key [shape=box, label=\"key/value inserted:\\n%s\"];\n %s }\n", keys, mt.dotGraph(rootHash))
+}
+func (mt *Trie) dotGraph(hash crypto.Digest) string {
+	var node node
+	var err error
+	nbytes, err := mt.get(hash)
+	//	nbytes, closer, err := mt.db.Get([]byte(hash.ToSlice()))
+	//	defer closer.Close()
+	if err != nil {
+		return ""
+	}
+	node, err = deserializeNode(nbytes)
+	if err != nil {
+		return ""
+	}
+
+	switch n := node.(type) {
+	case *RootNode:
+		return fmt.Sprintf("n%s [label=\"root\" shape=box];\n", hash) +
+			fmt.Sprintf("n%s -> n%s;\n", hash, n.child) +
+			mt.dotGraph(n.child)
+	case *LeafNode:
+		ln := n
+		return fmt.Sprintf("n%s [label=\"leaf\\nkeyEnd:%x\\nvalueHash:%s\" shape=box];\n", hash, ln.keyEnd, ln.valueHash)
+	case *ExtensionNode:
+		en := n
+		return fmt.Sprintf("n%s [label=\"extension\\nshKey:%x\" shape=box];\n", hash, en.sharedKey) +
+			fmt.Sprintf("n%s -> n%s;\n", hash, n.child) +
+			mt.dotGraph(n.child)
+	case *BranchNode:
+		bn := n
+		var indexesFilled string
+		indexesFilled = "--"
+		for i, child := range bn.children {
+			if child != (crypto.Digest{}) {
+				indexesFilled += fmt.Sprintf("%x ", i)
+			}
+		}
+		indexesFilled += "--"
+
+		s := fmt.Sprintf("n%s [label=\"branch\\nindexesFilled:%s\\nvalueHash:%s\" shape=box];\n", hash, indexesFilled, bn.valueHash)
+		for _, child := range n.children {
+			if child != (crypto.Digest{}) {
+				s += fmt.Sprintf("n%s -> n%s;\n", hash, child)
+			}
+		}
+		for _, child := range n.children {
+			if child != (crypto.Digest{}) {
+				s += mt.dotGraph(child)
+			}
+		}
+		return s
+	default:
+		return ""
+	}
 }

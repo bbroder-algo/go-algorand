@@ -22,6 +22,9 @@ import (
 	"github.com/algorand/go-algorand/crypto"
 	"github.com/stretchr/testify/require"
 	"os"
+	"time"
+	//    "strconv"
+	"math/rand"
 	"testing"
 )
 
@@ -162,7 +165,199 @@ func buildDotGraph(t *testing.T, mt *Trie, keys [][]byte, values [][]byte, fn st
 	_, err = file.WriteString(dot)
 }
 
-func TestTrieAdd(t *testing.T) {
+var x uint32 = 1234567890
+
+func pseudoRand() uint32 {
+	x ^= x << 13
+	x ^= x >> 17
+	x ^= x << 5
+	return x
+}
+
+func TestTrieAdd4mFrom2m(t *testing.T) {
+	mt, err := MakeTrie()
+	require.NoError(t, err)
+	verifyNewTrie(t, mt)
+	fmt.Println("Generating 2m random key/value pairs")
+	var accts [][]byte
+	accts = make([][]byte, 0, 2000000)
+	for m := 0; m < 2000000; m++ {
+		k := make([]byte, 32)
+		rand.Read(k)
+		for j := range k {
+			k[j] = k[j] & 0x0f
+		}
+		accts = append(accts, k)
+	}
+	fmt.Println("Adding 4m random key/value pairs")
+	batchSize := 250000
+	total := 4000000
+	for m := 0; m < total/batchSize; m++ {
+		fmt.Println("adding ", batchSize, " random key/value pairs")
+		for i := 0; i < batchSize; i++ {
+			rand_k := pseudoRand() % 2000000
+			rand_v := pseudoRand() % 2000000
+			mt.Add(accts[rand_k], accts[rand_v])
+		}
+		epoch := time.Now().Unix()
+		fmt.Println("committing:", epoch, " m:", m, "\n", stats.String())
+		mt.CommitPending()
+		epoch = time.Now().Unix()
+		fmt.Println("committed now:", epoch, " m:", m, "\n", stats.String())
+	}
+	fmt.Println("Done 4m random key/value pairs")
+}
+
+func TestTrieAdd1kEveryTwoSeconds(t *testing.T) {
+	mt, err := MakeTrie()
+	require.NoError(t, err)
+	verifyNewTrie(t, mt)
+	for m := 0; m < 2; m++ {
+		//        fmt.Println("Adding 250k random key/value pairs")
+		fmt.Println(stats.String())
+
+		var k []byte
+		var v []byte
+		for i := 0; i < 250000; i++ {
+			k = make([]byte, 32)
+			v = make([]byte, 32)
+			rand.Read(k)
+			rand.Read(v)
+			for j := range k {
+				k[j] = k[j] & 0x0f
+			}
+			mt.Add(k, v)
+		}
+		fmt.Println(time.Now().Unix())
+		fmt.Println(stats.String())
+
+	}
+	fmt.Println("Done adding 1k random key/value pairs")
+	buildDotGraph(t, mt, [][]byte{}, [][]byte{}, "/tmp/trie1k.dot")
+
+}
+func TestTrieAdd1kRandomKeyValues(t *testing.T) {
+	mt, err := MakeTrie()
+	require.NoError(t, err)
+	verifyNewTrie(t, mt)
+	fmt.Println("Adding 1k random key/value pairs")
+	fmt.Println(stats.String())
+
+	var k []byte
+	var v []byte
+	for i := 0; i < 1000; i++ {
+		k = make([]byte, 32)
+		v = make([]byte, 32)
+		rand.Read(k)
+		rand.Read(v)
+		for j := range k {
+			k[j] = k[j] & 0x0f
+		}
+		mt.Add(k, v)
+	}
+	fmt.Println("Done adding 1k random key/value pairs")
+	fmt.Println("Committing 1k random key/value pairs")
+	mt.CommitPending()
+	fmt.Println("Done committing 1k random key/value pairs")
+	fmt.Println(stats.String())
+	buildDotGraph(t, mt, [][]byte{}, [][]byte{}, "/tmp/trie1k.dot")
+
+}
+
+func TestTrieAddSimpleSequenceNoCache(t *testing.T) {
+	mt, err := MakeTrie()
+	require.NoError(t, err)
+	verifyNewTrie(t, mt)
+	var k []byte
+	var v []byte
+	var kk [][]byte
+	var vv [][]byte
+	k = []byte{0x01, 0x02, 0x03}
+	v = []byte{0x04, 0x05, 0x06}
+	kk = append(kk, k)
+	vv = append(vv, v)
+
+	fmt.Printf("1rootHash: %x\n", mt.rootHash)
+	fmt.Printf("1pendingRoot: %x\n", mt.pendingRoot)
+	mt.Add(k, v)
+	fmt.Printf("2rootHash: %x\n", mt.rootHash)
+	fmt.Printf("2pendingRoot: %x\n", mt.pendingRoot)
+	mt.CommitPending()
+	fmt.Printf("3rootHash: %x\n", mt.rootHash)
+	fmt.Printf("3pendingRoot: %x\n", mt.pendingRoot)
+	//	buildDotGraph(t, mt, kk, vv, "/tmp/cachetrie1.dot")
+	v = []byte{0x04, 0x05, 0x07}
+	kk = append(kk, k)
+	vv = append(vv, v)
+	mt.Add(k, v)
+	fmt.Printf("4rootHash: %x\n", mt.rootHash)
+	fmt.Printf("4pendingRoot: %x\n", mt.pendingRoot)
+	mt.CommitPending()
+
+	//	buildDotGraph(t, mt, kk, vv, "/tmp/cachetrie2.dot")
+	v = []byte{0x04, 0x05, 0x09}
+	kk = append(kk, k)
+	vv = append(vv, v)
+	mt.Add(k, v)
+	fmt.Printf("5rootHash: %x\n", mt.rootHash)
+	fmt.Printf("5pendingRoot: %x\n", mt.pendingRoot)
+	mt.CommitPending()
+	//	buildDotGraph(t, mt, kk, vv, "/tmp/cachetrie3.dot")
+
+	k = []byte{0x01, 0x02}
+	v = []byte{0x04, 0x05, 0x09}
+	kk = append(kk, k)
+	vv = append(vv, v)
+	mt.Add(k, v)
+	fmt.Printf("6rootHash: %x\n", mt.rootHash)
+	fmt.Printf("6pendingRoot: %x\n", mt.pendingRoot)
+	mt.CommitPending()
+	//	buildDotGraph(t, mt, kk, vv, "/tmp/cachetrie4.dot")
+
+	k = []byte{0x01, 0x02}
+	v = []byte{0x04, 0x05, 0x0a}
+	kk = append(kk, k)
+	vv = append(vv, v)
+	mt.Add(k, v)
+	mt.CommitPending()
+	//	buildDotGraph(t, mt, kk, vv, "/tmp/cachetrie5.dot")
+
+	k = []byte{0x01, 0x02, 0x03, 0x04}
+	v = []byte{0x04, 0x05, 0x0b}
+	kk = append(kk, k)
+	vv = append(vv, v)
+	mt.Add(k, v)
+	fmt.Printf("7rootHash: %x\n", mt.rootHash)
+	fmt.Printf("7pendingRoot: %x\n", mt.pendingRoot)
+	mt.CommitPending()
+	//	buildDotGraph(t, mt, kk, vv, "/tmp/cachetrie6.dot")
+
+	k = []byte{0x01, 0x02, 0x03, 0x06, 0x06, 0x07, 0x06}
+	v = []byte{0x04, 0x05, 0x0c}
+	kk = append(kk, k)
+	vv = append(vv, v)
+	mt.Add(k, v)
+	fmt.Printf("8rootHash: %x\n", mt.rootHash)
+	fmt.Printf("8pendingRoot: %x\n", mt.pendingRoot)
+	mt.CommitPending()
+	//	buildDotGraph(t, mt, kk, vv, "/tmp/cachetrie7.dot")
+
+	k = []byte{0x01, 0x0d, 0x02, 0x03, 0x06, 0x06, 0x07, 0x06}
+	v = []byte{0x04, 0x05, 0x0c}
+	kk = append(kk, k)
+	vv = append(vv, v)
+	fmt.Printf("9rootHash: %x\n", mt.rootHash)
+	fmt.Printf("9pendingRoot: %x\n", mt.pendingRoot)
+	mt.Add(k, v)
+	fmt.Printf("arootHash: %x\n", mt.rootHash)
+	fmt.Printf("apendingRoot: %x\n", mt.pendingRoot)
+	mt.CommitPending()
+	fmt.Printf("5rootHash: %x\n", mt.rootHash)
+	fmt.Printf("5pendingRoot: %x\n", mt.pendingRoot)
+	buildDotGraph(t, mt, kk, vv, "/tmp/cachetrie8.dot")
+}
+
+func TestTrieAddSimpleSequence(t *testing.T) {
 	mt, err := MakeTrie()
 	require.NoError(t, err)
 	verifyNewTrie(t, mt)
@@ -223,7 +418,6 @@ func TestTrieAdd(t *testing.T) {
 	vv = append(vv, v)
 	mt.Add(k, v)
 	buildDotGraph(t, mt, kk, vv, "/tmp/trie8.dot")
-
 }
 
 func TestNibbleUtilities(t *testing.T) {
