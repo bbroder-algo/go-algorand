@@ -57,7 +57,9 @@ func TestTrieAdd4mFrom2m(t *testing.T) {
 	}
 	epoch := time.Now().Truncate(time.Millisecond)
 	batchSize := 250_000
-	total := 40_000_000
+	//	batchSize := 5
+	total := 400_000_000_000
+	//	total := 39
 	fmt.Println("Adding", total, "random key/value pairs in batches of", batchSize, "at", epoch)
 	for m := 0; m < total; m++ {
 		epoch := time.Now().Truncate(time.Millisecond)
@@ -73,7 +75,7 @@ func TestTrieAdd4mFrom2m(t *testing.T) {
 		}
 		epoch = time.Now().Truncate(time.Millisecond)
 		fmt.Println("committing:", epoch, " m:", m, "\n", stats.String(), "len(mt.sets):", len(mt.sets), "len(mt.gets):", len(mt.gets), "len(mt.dels):", len(mt.dels))
-		require.NoError(t, mt.CommitPending())
+		require.NoError(t, mt.Commit())
 		epoch = time.Now().Truncate(time.Millisecond)
 		fmt.Println("committed now:", epoch, " m:", m, "\n", stats.String(), "len(mt.sets):", len(mt.sets), "len(mt.gets):", len(mt.gets), "len(mt.dels):", len(mt.dels))
 	}
@@ -83,7 +85,7 @@ func TestTrieAdd4mFrom2m(t *testing.T) {
 func verifyNewTrie(t *testing.T, mt *Trie) {
 	require.NotNil(t, mt)
 	require.NotNil(t, mt.db)
-	require.Nil(t, mt.rootHash)
+	require.Nil(t, mt.root)
 }
 
 func TestMakeTrie(t *testing.T) {
@@ -93,10 +95,15 @@ func TestMakeTrie(t *testing.T) {
 
 }
 
+func makenodehash(cd crypto.Digest) *nodehash {
+	var nh nodehash
+	nh.hash = &cd
+	return &nh
+}
+
 func TestNodeSerialization(t *testing.T) {
 	rn := &RootNode{}
-	hash := crypto.Hash([]byte("rootnode"))
-	rn.child = hash
+	rn.child = makenodehash(crypto.Hash([]byte("rootnode")))
 	data, err := serializeRootNode(rn)
 	require.NoError(t, err)
 	expected := []byte{0x0, 0x73, 0x88, 0xa, 0x4c, 0x76, 0x1d, 0x89, 0x6f, 0x2c, 0x2, 0xbf, 0xd9, 0x44, 0x5, 0x1, 0xa9, 0xd1, 0x17, 0x47, 0x8c, 0x68, 0xab, 0x94, 0xb4, 0x93, 0xcb,
@@ -132,22 +139,22 @@ func TestNodeSerialization(t *testing.T) {
 	require.Equal(t, ln, ln3)
 
 	bn := &BranchNode{}
-	bn.children[0] = crypto.Hash([]byte("branchchild0"))
-	bn.children[1] = crypto.Hash([]byte("branchchild1"))
-	bn.children[2] = crypto.Hash([]byte("branchchild2"))
-	bn.children[3] = crypto.Hash([]byte("branchchild3"))
-	bn.children[4] = crypto.Hash([]byte("branchchild4"))
-	bn.children[5] = crypto.Hash([]byte("branchchild5"))
-	bn.children[6] = crypto.Hash([]byte("branchchild6"))
-	bn.children[7] = crypto.Hash([]byte("branchchild7"))
-	bn.children[8] = crypto.Hash([]byte("branchchild8"))
-	bn.children[9] = crypto.Hash([]byte("branchchild9"))
-	bn.children[10] = crypto.Hash([]byte("branchchild10"))
-	bn.children[11] = crypto.Hash([]byte("branchchild11"))
-	bn.children[12] = crypto.Hash([]byte("branchchild12"))
-	bn.children[13] = crypto.Hash([]byte("branchchild13"))
-	bn.children[14] = crypto.Hash([]byte("branchchild14"))
-	bn.children[15] = crypto.Hash([]byte("branchchild15"))
+	bn.children[0] = makenodehash(crypto.Hash([]byte("branchchild0")))
+	bn.children[1] = makenodehash(crypto.Hash([]byte("branchchild1")))
+	bn.children[2] = makenodehash(crypto.Hash([]byte("branchchild2")))
+	bn.children[3] = makenodehash(crypto.Hash([]byte("branchchild3")))
+	bn.children[4] = makenodehash(crypto.Hash([]byte("branchchild4")))
+	bn.children[5] = makenodehash(crypto.Hash([]byte("branchchild5")))
+	bn.children[6] = makenodehash(crypto.Hash([]byte("branchchild6")))
+	bn.children[7] = makenodehash(crypto.Hash([]byte("branchchild7")))
+	bn.children[8] = makenodehash(crypto.Hash([]byte("branchchild8")))
+	bn.children[9] = makenodehash(crypto.Hash([]byte("branchchild9")))
+	bn.children[10] = makenodehash(crypto.Hash([]byte("branchchild10")))
+	bn.children[11] = makenodehash(crypto.Hash([]byte("branchchild11")))
+	bn.children[12] = makenodehash(crypto.Hash([]byte("branchchild12")))
+	bn.children[13] = makenodehash(crypto.Hash([]byte("branchchild13")))
+	bn.children[14] = makenodehash(crypto.Hash([]byte("branchchild14")))
+	bn.children[15] = makenodehash(crypto.Hash([]byte("branchchild15")))
 	bn.valueHash = crypto.Hash([]byte("branchvalue"))
 	data, err = serializeBranchNode(bn)
 	require.NoError(t, err)
@@ -156,15 +163,18 @@ func TestNodeSerialization(t *testing.T) {
 	bn2, err := deserializeBranchNode(data)
 	require.NoError(t, err)
 	require.Equal(t, bn, bn2)
-	bn.children[7] = crypto.Digest{}
+
+	bn.children[7] = nil
 	data, err = serializeBranchNode(bn)
 	require.NoError(t, err)
 	expected = []byte{0x5, 0xe8, 0x31, 0x2c, 0x27, 0xec, 0x3d, 0x32, 0x7, 0x48, 0xab, 0x13, 0xed, 0x2f, 0x67, 0x94, 0xb3, 0x34, 0x8f, 0x1e, 0x14, 0xe5, 0xac, 0x87, 0x6e, 0x7, 0x68, 0xd6, 0xf6, 0x92, 0x99, 0x4b, 0xc8, 0x2e, 0x93, 0xde, 0xf1, 0x72, 0xc8, 0x55, 0xbb, 0x7e, 0xd1, 0x1d, 0x38, 0x6, 0xd2, 0x97, 0xd7, 0x2, 0x2, 0x86, 0x93, 0x37, 0x57, 0xce, 0xa4, 0xc5, 0x7e, 0x4c, 0xd4, 0x50, 0x94, 0x2e, 0x75, 0xeb, 0xcd, 0x9b, 0x80, 0xa2, 0xf5, 0xf3, 0x15, 0x4a, 0xf2, 0x62, 0x6, 0x7d, 0x6d, 0xdd, 0xe9, 0x20, 0xe1, 0x1a, 0x95, 0x3b, 0x2b, 0xb9, 0xc1, 0xaf, 0x3e, 0xcb, 0x72, 0x1d, 0x3f, 0xad, 0xe9, 0xa6, 0x30, 0xc6, 0xc5, 0x65, 0xf, 0x86, 0xb2, 0x3a, 0x5b, 0x47, 0xcb, 0x29, 0x31, 0xf7, 0x8a, 0xdf, 0xe0, 0x41, 0x6b, 0x11, 0xc0, 0xd, 0xbc, 0x80, 0xa7, 0x48, 0x97, 0x21, 0xbd, 0xee, 0x6f, 0x36, 0xf4, 0x7b, 0x6d, 0x68, 0xa1, 0x43, 0x31, 0x90, 0xf8, 0x56, 0x69, 0x4c, 0xee, 0x88, 0x76, 0x9c, 0xd1, 0xde, 0xe4, 0xbd, 0x64, 0x7d, 0x18, 0xce, 0xd6, 0xdb, 0xf8, 0x85, 0x84, 0x88, 0x5d, 0x7e, 0xda, 0xe0, 0xf2, 0xa0, 0x6d, 0x24, 0x4f, 0xcf, 0xb, 0x8c, 0x34, 0x57, 0x2a, 0x13, 0x22, 0xd9, 0x8d, 0x79, 0x8, 0xa4, 0x22, 0x91, 0x45, 0x64, 0x7b, 0xf3, 0xad, 0xe8, 0x9b, 0x5f, 0x7c, 0x5c, 0xbd, 0x9, 0xd3, 0xc7, 0x3, 0xe2, 0xef, 0x6b, 0x8, 0x8, 0x98, 0x52, 0xb, 0xd1, 0x6a, 0x5a, 0x18, 0x89, 0x44, 0x4f, 0xf1, 0xb0, 0x37, 0xd9, 0x7f, 0x99, 0x3f, 0x6a, 0x84, 0x46, 0x83, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x84, 0x38, 0x6b, 0x6e, 0x7e, 0xf0, 0xef, 0xaa, 0x29, 0xa5, 0x13, 0x0, 0xef, 0xff, 0xdf, 0xb5, 0xd7, 0x4e, 0x41, 0x75, 0x4d, 0x2, 0x84, 0x20, 0xe2, 0x18, 0x50, 0x52, 0xae, 0xf4, 0xea, 0xeb, 0x84, 0xb3, 0x91, 0x85, 0xa8, 0xa, 0xba, 0xc9, 0x31, 0x9f, 0x5e, 0x3e, 0xf8, 0xb5, 0xf4, 0x4b, 0xf8, 0xf2, 0xf0, 0x76, 0xa1, 0x6d, 0xec, 0x57, 0x65, 0xbd, 0x2e, 0x78, 0xbe, 0xf4, 0x7c, 0xe4, 0xf2, 0x45, 0xc0, 0xaf, 0x94, 0xb, 0x45, 0x1b, 0xd3, 0xcf, 0x9f, 0x17, 0x7e, 0x1a, 0x52, 0x6d, 0x18, 0xe5, 0x1a, 0x7c, 0xd9, 0x9d, 0xef, 0x8a, 0xe3, 0xe9, 0xe6, 0xf6, 0x76, 0x5e, 0x12, 0xbf, 0xd2, 0xe8, 0xaa, 0x8, 0x88, 0x15, 0x81, 0x99, 0x4e, 0xa3, 0x12, 0x98, 0xc1, 0xb3, 0xde, 0x42, 0x53, 0x2, 0x29, 0x82, 0x87, 0xfe, 0x3d, 0x8, 0xe0, 0xc2, 0x3, 0x70, 0x56, 0xd, 0x9, 0xad, 0xe4, 0x1a, 0xa5, 0xf6, 0x4, 0xdb, 0x63, 0xd0, 0x49, 0x6b, 0x5b, 0xa2, 0x56, 0xb1, 0xd1, 0x4b, 0x56, 0xc3, 0x7e, 0x4b, 0xec, 0xb5, 0xdb, 0xd4, 0xd9, 0xe1, 0x20, 0x99, 0x80, 0x71, 0x9, 0x72, 0x3b, 0xc, 0x8b, 0x56, 0x4, 0x94, 0xe6, 0x4e, 0x35, 0xd, 0x3e, 0x7, 0x8b, 0x86, 0x73, 0x62, 0x5f, 0x61, 0x8d, 0x70, 0x68, 0x86, 0xe8, 0x65, 0xbe, 0x18, 0xa8, 0x4a, 0xac, 0x6d, 0x81, 0x15, 0xde, 0x1b, 0xe1, 0xb3, 0xe8, 0x6a, 0x46, 0xdf, 0xdc, 0xf1, 0x6, 0x3c, 0xa6, 0x1c, 0xc9, 0xcd, 0x12, 0x5e, 0x5f, 0x28, 0xd1, 0x71, 0x6e, 0x9f, 0xc7, 0xdc, 0x77, 0x98, 0x47, 0x7, 0x94, 0x38, 0x4, 0xc4, 0xc4, 0xfe, 0x17, 0x12, 0x1b, 0xcf, 0x96, 0xd8, 0xb1, 0xf2, 0x1e, 0x81, 0xab, 0x15, 0x86, 0x75, 0x5a, 0x39, 0x13, 0xdb, 0xe, 0x1a, 0xd9, 0xa9, 0x70, 0x7d, 0xdd, 0xaf, 0x64, 0x12, 0x27, 0xe5, 0x97, 0xa1, 0x34, 0xb8, 0x1a, 0x61, 0x48, 0x29, 0x61, 0x62, 0xe4, 0x40, 0xba, 0x5, 0x44, 0x24, 0x51, 0xc1, 0x9b, 0x8e, 0x62, 0xf2, 0x1c, 0x6f, 0xd6, 0x8, 0x3, 0xbe, 0x88, 0xf}
+
 	require.Equal(t, expected, data)
 	bn3, err := deserializeBranchNode(data)
 	require.NoError(t, err)
+
 	require.Equal(t, bn, bn3)
-	bn.children[0] = crypto.Digest{}
+	bn.children[0] = makenodehash(crypto.Digest{})
 	require.NotEqual(t, bn, bn3)
 
 	en := &ExtensionNode{}
@@ -172,7 +182,7 @@ func TestNodeSerialization(t *testing.T) {
 	for i := range en.sharedKey {
 		en.sharedKey[i] &= 0x0f
 	}
-	en.child = crypto.Hash([]byte("extensionchild"))
+	en.child = makenodehash(crypto.Hash([]byte("extensionchild")))
 	data, err = serializeExtensionNode(en)
 	require.NoError(t, err)
 	expected = []byte{0x2, 0xa7, 0xa7, 0xc, 0x66, 0xad, 0xa, 0xc3, 0xef, 0xd6, 0x24, 0x4b, 0x78, 0x46, 0xbb, 0x4, 0x39, 0x28, 0xb9, 0xe2, 0xcf, 0xe0, 0x3e, 0x35, 0xa3, 0x91, 0x8e,
@@ -266,14 +276,14 @@ func TestTrieAdd1kRandomKeyValues(t *testing.T) {
 	}
 	fmt.Println("Done adding 1k random key/value pairs")
 	fmt.Println("Committing 1k random key/value pairs")
-	mt.CommitPending()
+	mt.Commit()
 	fmt.Println("Done committing 1k random key/value pairs")
 	fmt.Println(stats.String())
-	buildDotGraph(t, mt, [][]byte{}, [][]byte{}, "/tmp/trie1k.dot")
+	//	buildDotGraph(t, mt, [][]byte{}, [][]byte{}, "/tmp/trie1k.dot")
 
 }
 
-func TestTrieAddSimpleSequenceNoCache(t *testing.T) {
+func TestTrieStupidAddSimpleSequenceNoCache(t *testing.T) {
 	mt, err := MakeTrie()
 	require.NoError(t, err)
 	verifyNewTrie(t, mt)
@@ -286,31 +296,26 @@ func TestTrieAddSimpleSequenceNoCache(t *testing.T) {
 	kk = append(kk, k)
 	vv = append(vv, v)
 
-	fmt.Printf("1rootHash: %x\n", mt.rootHash)
-	fmt.Printf("1pendingRoot: %x\n", mt.pendingRoot)
+	fmt.Printf("1rootHash: %v\n", mt.root)
 	mt.Add(k, v)
-	fmt.Printf("2rootHash: %x\n", mt.rootHash)
-	fmt.Printf("2pendingRoot: %x\n", mt.pendingRoot)
-	mt.CommitPending()
-	fmt.Printf("3rootHash: %x\n", mt.rootHash)
-	fmt.Printf("3pendingRoot: %x\n", mt.pendingRoot)
+	fmt.Printf("2rootHash: %v\n", mt.root)
+	mt.Commit()
+	fmt.Printf("3rootHash: %v\n", mt.root)
 	//	buildDotGraph(t, mt, kk, vv, "/tmp/cachetrie1.dot")
 	v = []byte{0x04, 0x05, 0x07}
 	kk = append(kk, k)
 	vv = append(vv, v)
 	mt.Add(k, v)
-	fmt.Printf("4rootHash: %x\n", mt.rootHash)
-	fmt.Printf("4pendingRoot: %x\n", mt.pendingRoot)
-	mt.CommitPending()
+	fmt.Printf("4rootHash: %v\n", mt.root)
+	mt.Commit()
 
 	//	buildDotGraph(t, mt, kk, vv, "/tmp/cachetrie2.dot")
 	v = []byte{0x04, 0x05, 0x09}
 	kk = append(kk, k)
 	vv = append(vv, v)
 	mt.Add(k, v)
-	fmt.Printf("5rootHash: %x\n", mt.rootHash)
-	fmt.Printf("5pendingRoot: %x\n", mt.pendingRoot)
-	mt.CommitPending()
+	fmt.Printf("5rootHash: %v\n", mt.root)
+	mt.Commit()
 	//	buildDotGraph(t, mt, kk, vv, "/tmp/cachetrie3.dot")
 
 	k = []byte{0x01, 0x02}
@@ -318,9 +323,8 @@ func TestTrieAddSimpleSequenceNoCache(t *testing.T) {
 	kk = append(kk, k)
 	vv = append(vv, v)
 	mt.Add(k, v)
-	fmt.Printf("6rootHash: %x\n", mt.rootHash)
-	fmt.Printf("6pendingRoot: %x\n", mt.pendingRoot)
-	mt.CommitPending()
+	fmt.Printf("6rootHash: %v\n", mt.root)
+	mt.Commit()
 	//	buildDotGraph(t, mt, kk, vv, "/tmp/cachetrie4.dot")
 
 	k = []byte{0x01, 0x02}
@@ -328,7 +332,7 @@ func TestTrieAddSimpleSequenceNoCache(t *testing.T) {
 	kk = append(kk, k)
 	vv = append(vv, v)
 	mt.Add(k, v)
-	mt.CommitPending()
+	mt.Commit()
 	//	buildDotGraph(t, mt, kk, vv, "/tmp/cachetrie5.dot")
 
 	k = []byte{0x01, 0x02, 0x03, 0x04}
@@ -336,9 +340,8 @@ func TestTrieAddSimpleSequenceNoCache(t *testing.T) {
 	kk = append(kk, k)
 	vv = append(vv, v)
 	mt.Add(k, v)
-	fmt.Printf("7rootHash: %x\n", mt.rootHash)
-	fmt.Printf("7pendingRoot: %x\n", mt.pendingRoot)
-	mt.CommitPending()
+	fmt.Printf("7rootHash: %v\n", mt.root)
+	mt.Commit()
 	//	buildDotGraph(t, mt, kk, vv, "/tmp/cachetrie6.dot")
 
 	k = []byte{0x01, 0x02, 0x03, 0x06, 0x06, 0x07, 0x06}
@@ -346,23 +349,19 @@ func TestTrieAddSimpleSequenceNoCache(t *testing.T) {
 	kk = append(kk, k)
 	vv = append(vv, v)
 	mt.Add(k, v)
-	fmt.Printf("8rootHash: %x\n", mt.rootHash)
-	fmt.Printf("8pendingRoot: %x\n", mt.pendingRoot)
-	mt.CommitPending()
+	fmt.Printf("8rootHash: %v\n", mt.root)
+	mt.Commit()
 	//	buildDotGraph(t, mt, kk, vv, "/tmp/cachetrie7.dot")
 
 	k = []byte{0x01, 0x0d, 0x02, 0x03, 0x06, 0x06, 0x07, 0x06}
 	v = []byte{0x04, 0x05, 0x0c}
 	kk = append(kk, k)
 	vv = append(vv, v)
-	fmt.Printf("9rootHash: %x\n", mt.rootHash)
-	fmt.Printf("9pendingRoot: %x\n", mt.pendingRoot)
+	fmt.Printf("9rootHash: %v\n", mt.root)
 	mt.Add(k, v)
-	fmt.Printf("arootHash: %x\n", mt.rootHash)
-	fmt.Printf("apendingRoot: %x\n", mt.pendingRoot)
-	mt.CommitPending()
-	fmt.Printf("5rootHash: %x\n", mt.rootHash)
-	fmt.Printf("5pendingRoot: %x\n", mt.pendingRoot)
+	fmt.Printf("arootHash: %v\n", mt.root)
+	mt.Commit()
+	fmt.Printf("5rootHash: %v\n", mt.root)
 	buildDotGraph(t, mt, kk, vv, "/tmp/cachetrie8.dot")
 }
 
@@ -375,12 +374,14 @@ func TestTrieAddSimpleSequence(t *testing.T) {
 	var kk [][]byte
 	var vv [][]byte
 	k = []byte{0x01, 0x02, 0x03}
-	v = []byte{0x04, 0x05, 0x06}
+	v = []byte{0x03, 0x05, 0x06}
 	kk = append(kk, k)
 	vv = append(vv, v)
 
 	mt.Add(k, v)
 	buildDotGraph(t, mt, kk, vv, "/tmp/trie1.dot")
+	fmt.Printf("done with that")
+
 	v = []byte{0x04, 0x05, 0x07}
 	kk = append(kk, k)
 	vv = append(vv, v)
@@ -427,6 +428,17 @@ func TestTrieAddSimpleSequence(t *testing.T) {
 	vv = append(vv, v)
 	mt.Add(k, v)
 	buildDotGraph(t, mt, kk, vv, "/tmp/trie8.dot")
+
+	//duplicate key and value
+	k = []byte{0x01, 0x0d, 0x02, 0x03, 0x06, 0x06, 0x07, 0x06}
+	v = []byte{0x04, 0x05, 0x0c}
+	kk = append(kk, k)
+	vv = append(vv, v)
+	mt.Add(k, v)
+	buildDotGraph(t, mt, kk, vv, "/tmp/trie9.dot")
+
+	err = mt.Commit()
+	require.NoError(t, err)
 }
 
 func TestNibbleUtilities(t *testing.T) {

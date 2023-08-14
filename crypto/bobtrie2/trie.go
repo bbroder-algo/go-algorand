@@ -29,13 +29,120 @@ import (
 
 var debugTrie = false
 
+// Trie nodes
+type nodehash struct {
+	hash *crypto.Digest
+	path *nibbles
+}
+
+func (nh *nodehash) key(path nibbles) ([]byte, error) {
+	if nh.hash == nil {
+		return nil, errors.New("nil hash")
+	}
+	return nh.hash.ToSlice(), nil
+
+	//	if nh.path == nil {
+	//        panic(fmt.Sprintf("nil path: %s", debug.Stack()))
+	////		return []byte{}, errors.New("trying to get the database key of a node without a path")
+	//	}
+
+	var buf bytes.Buffer
+
+	p, half, err := path.pack()
+	if err != nil {
+		return nil, err
+	}
+
+	if half {
+		buf.WriteByte(1)
+	} else {
+		buf.WriteByte(0)
+	}
+
+	buf.Write(p)
+	buf.Write(nh.hash.ToSlice())
+
+	return buf.Bytes(), nil
+}
+
+func (nh *nodehash) setHash(bytes []byte) {
+	stats.cryptohashes++
+	nh.hash = new(crypto.Digest)
+	*nh.hash = crypto.Hash(bytes)
+}
+
+type node interface {
+	descendAdd(mt *Trie, pathKey nibbles, remainingKey nibbles, valueHash crypto.Digest) (*nodehash, error)
+	descendDelete(mt *Trie, pathKey nibbles, remainingKey nibbles) (*nodehash, bool, error)
+	hash(mt *Trie, pathKey nibbles, nh *nodehash) ([]byte, error)
+	set(mt *Trie, fullpath nibbles) *nodehash
+}
+
+type RootNode struct {
+	child *nodehash
+}
+type LeafNode struct {
+	keyEnd    nibbles
+	valueHash crypto.Digest
+}
+
+type ExtensionNode struct {
+	sharedKey nibbles
+	child     *nodehash
+}
+
+type BranchNode struct {
+	children  [16]*nodehash
+	valueHash crypto.Digest
+}
+
+func makeRootNode(child *nodehash) *RootNode {
+	return &RootNode{child: child}
+}
+func makeLeafNode(keyEnd nibbles, valueHash crypto.Digest) *LeafNode {
+	return &LeafNode{keyEnd: keyEnd, valueHash: valueHash}
+}
+func makeExtensionNode(sharedKey nibbles, child *nodehash) *ExtensionNode {
+	return &ExtensionNode{sharedKey: sharedKey, child: child}
+}
+func makeBranchNode(children [16]*nodehash, valueHash crypto.Digest) *BranchNode {
+	return &BranchNode{children: children, valueHash: valueHash}
+}
+
 type Trie struct {
-	db          *pebble.DB
-	rootHash    *crypto.Digest
-	pendingRoot *crypto.Digest
-	sets        map[crypto.Digest][]byte
-	gets        map[crypto.Digest][]byte
-	dels        map[crypto.Digest]bool
+	db     *pebble.DB
+	root   *nodehash
+	parent *Trie
+	sets   map[*nodehash]node
+	gets   map[*nodehash]node
+	dels   map[*nodehash]nibbles
+}
+
+// MakeTrie creates a merkle trie
+func MakeTrie() (*Trie, error) {
+	var db *pebble.DB
+	var err error
+	if false {
+		fmt.Printf("mem db")
+		db, err = pebble.Open("", &pebble.Options{FS: vfs.NewMem()})
+	} else {
+		dbdir := "/tmp/blahdb/"
+		fmt.Printf("disk db: %s\n", dbdir)
+		db, err = pebble.Open(dbdir, &pebble.Options{})
+	}
+	if err != nil {
+		return nil, err
+	}
+	mt := &Trie{db: db}
+	mt.ClearPending()
+
+	return mt, nil
+}
+
+func (mt *Trie) child() *Trie {
+	ch := &Trie{root: mt.root, parent: mt}
+	ch.ClearPending()
+	return ch
 }
 
 const (
@@ -140,75 +247,74 @@ func sharedNibbles(arr1 nibbles, arr2 nibbles) nibbles {
 	return shared
 }
 
-// Trie nodes
-
-type node interface {
-	descendAdd(mt *Trie, fullKey nibbles, remainingKey nibbles, valueHash crypto.Digest) (crypto.Digest, error)
-	descendDelete(mt *Trie, fullKey nibbles, remainingKey nibbles) (crypto.Digest, bool, error)
-}
-
-// Data can only live in leaf and branch nodes.
-type RootNode struct {
-	child crypto.Digest
-}
-
-type LeafNode struct {
-	keyEnd    nibbles
-	valueHash crypto.Digest
-}
-
-type ExtensionNode struct {
-	sharedKey nibbles
-	child     crypto.Digest
-}
-
-type BranchNode struct {
-	children  [16]crypto.Digest
-	valueHash crypto.Digest
-}
-
-// MakeTrie creates a merkle trie
-func MakeTrie() (*Trie, error) {
-	db, err := pebble.Open("", &pebble.Options{FS: vfs.NewMem()})
-	//	db, err := pebble.Open("/tmp/blahdb/", &pebble.Options{})
-	if err != nil {
-		return nil, err
-	}
-	mt := &Trie{db: db, rootHash: nil}
-	mt.ClearPending()
-
-	return mt, nil
-}
-
 // Provide the root hash for this trie
-func (mt *Trie) RootHash() *crypto.Digest {
-	if mt.pendingRoot != nil {
-		return mt.pendingRoot
+func (mt *Trie) RootHash() (crypto.Digest, error) {
+	if mt.root == nil {
+		return crypto.Digest{}, nil
 	}
-	return mt.rootHash
+	err := mt.descendHash(mt.root, nibbles{})
+	if err != nil {
+		return crypto.Digest{}, err
+	}
+
+	return *(mt.root.hash), nil
 }
 
 func (mt *Trie) ClearPending() {
-	mt.sets = make(map[crypto.Digest][]byte)
-	mt.gets = make(map[crypto.Digest][]byte)
-	mt.dels = make(map[crypto.Digest]bool)
-	mt.pendingRoot = nil
+	mt.sets = make(map[*nodehash]node)
+	mt.gets = make(map[*nodehash]node)
+	mt.dels = make(map[*nodehash]nibbles)
+	// mt.pendingRoot = nil
+}
+func (mt *Trie) merge() error {
+	if mt.parent == nil {
+		return nil
+	}
+	mt.parent.root = mt.root
+	for k, v := range mt.sets {
+		mt.parent.sets[k] = v
+	}
+	for k, v := range mt.gets {
+		mt.parent.gets[k] = v
+	}
+	for k, v := range mt.dels {
+		mt.parent.dels[k] = v
+	}
+	return nil
 }
 
-func (mt *Trie) CommitPending() error {
+func (mt *Trie) Commit() error {
+	if mt.parent != nil {
+		mt.merge()
+		return mt.parent.Commit()
+	}
+
 	b := mt.db.NewBatch()
 	options := &pebble.WriteOptions{}
-	for k, v := range mt.sets {
+	for nh, n := range mt.sets {
 		//		err := mt.db.Set(k[:], v, pebble.Sync)
-		err := b.Set(k[:], v, options)
+		if nh.path == nil {
+			return errors.New("nil path")
+		}
+		v, err := n.hash(mt, *(nh.path), nh)
+		if err != nil {
+			return err
+		}
+
+		key, err := nh.key(*nh.path)
+		if err != nil {
+			return err
+		}
+
+		err = b.Set(key, v, options)
 		if err != nil {
 			return err
 		}
 
 	}
-	for k := range mt.dels {
-		//		err := mt.db.Delete(k[:], pebble.Sync)
-		err := b.Delete(k[:], options)
+	for nh, path := range mt.dels {
+		key, err := nh.key(path)
+		err = b.Delete(key, options)
 		if err != nil {
 			return err
 		}
@@ -223,9 +329,6 @@ func (mt *Trie) CommitPending() error {
 		return err
 	}
 
-	if mt.pendingRoot != nil {
-		mt.rootHash = mt.pendingRoot
-	}
 	mt.ClearPending()
 
 	return nil
@@ -240,30 +343,19 @@ func (mt *Trie) Add(key nibbles, value []byte) (err error) {
 	if len(key) == 0 {
 		return errors.New("empty key not allowed")
 	}
+
 	if len(key) > MaxKeyLength {
 		return errors.New("key too long")
 	}
 
-	var hash crypto.Digest
-	if mt.rootHash == nil && mt.pendingRoot == nil {
-		hash, err = mt.storeNewRootNode(crypto.Digest{})
-		if err != nil {
-			return err
-		}
-		mt.pendingRoot = &hash
-	}
-
-	var rootHash crypto.Digest
-	if mt.pendingRoot != nil {
-		rootHash = *mt.pendingRoot
-	} else {
-		rootHash = *mt.rootHash
+	if mt.root == nil {
+		mt.root = makeRootNode(nil).set(mt, nil)
 	}
 
 	stats.cryptohashes++
-	hash, err = mt.descendAdd(rootHash, []byte{}, key, crypto.Hash(value))
+	nh, err := mt.descendAdd(mt.root, []byte{}, key, crypto.Hash(value))
 	if err == nil {
-		mt.pendingRoot = &hash
+		mt.root = nh
 	}
 	return err
 }
@@ -275,239 +367,199 @@ func (mt *Trie) Delete(key nibbles) (bool, error) {
 	if len(key) == 0 {
 		return false, errors.New("empty key not allowed")
 	}
-	if mt.rootHash == nil && mt.pendingRoot == nil {
+	if mt.root == nil {
 		return false, nil
 	}
 
-	var rootHash crypto.Digest
-	if mt.pendingRoot != nil {
-		rootHash = *mt.pendingRoot
-	} else {
-		rootHash = *mt.rootHash
-	}
-	hash, found, err := mt.descendDelete(rootHash, []byte{}, key)
+	nh, found, err := mt.descendDelete(mt.root, []byte{}, key)
 	if err == nil && found {
-		mt.pendingRoot = &hash
+		mt.root = nh
 	}
 	return found, err
 }
 
-// backing store operations
-func (mt *Trie) storeNewLeafNode(key nibbles, keyEnd nibbles, valueHash crypto.Digest) (crypto.Digest, error) {
-	ln := &LeafNode{keyEnd: keyEnd, valueHash: valueHash}
-	data, err := serializeLeafNode(ln)
-	if err != nil {
-		return crypto.Digest{}, err
-	}
-	stats.cryptohashes++
-	hash := crypto.Hash(append(key, data...))
-	stats.leafnodesets++
-	//	err = mt.db.Set([]byte(hash.ToSlice()), data, pebble.NoSync)
-	mt.set(hash, data)
-	return hash, err
-}
-
-func (mt *Trie) storeNewRootNode(child crypto.Digest) (crypto.Digest, error) {
-	rn := &RootNode{child: child}
-	data, err := serializeRootNode(rn)
-	if err != nil {
-		return crypto.Digest{}, err
-	}
-	stats.cryptohashes++
-	hash := crypto.Hash(data)
-	stats.rootnodesets++
-	//	err = mt.db.Set([]byte(hash.ToSlice()), data, pebble.NoSync)
-	mt.set(hash, data)
-	return hash, err
-}
-func (mt *Trie) storeNewExtensionNode(sharedKey nibbles, child crypto.Digest) (crypto.Digest, error) {
-	en := &ExtensionNode{sharedKey: sharedKey, child: child}
-	data, err := serializeExtensionNode(en)
-	if err != nil {
-		return crypto.Digest{}, err
-	}
-	stats.cryptohashes++
-	hash := crypto.Hash(data)
-	stats.extnodesets++
-	//	err = mt.db.Set([]byte(hash.ToSlice()), data, pebble.NoSync)
-	mt.set(hash, data)
-	return hash, err
-}
-func (mt *Trie) storeNewBranchNode(key nibbles, children [16]crypto.Digest, valueHash crypto.Digest) (crypto.Digest, error) {
-	bn := &BranchNode{children: children, valueHash: valueHash}
-	data, err := serializeBranchNode(bn)
-	if err != nil {
-		return crypto.Digest{}, err
-	}
-	stats.cryptohashes++
-	hash := crypto.Hash(append(key, data...))
-	stats.branchnodesets++
-	//	err = mt.db.Set([]byte(hash.ToSlice()), data, pebble.NoSync)
-	//    mt.sets[hash] = data
-	mt.set(hash, data)
-	return hash, err
-}
-
-func (mt *Trie) get(node crypto.Digest) ([]byte, error) {
+// Trie node get/set/delete operations
+func (mt *Trie) get(nh *nodehash, pathKey nibbles) (node, error) {
 	if debugTrie {
-		fmt.Printf("get %x\n", node)
+		fmt.Printf("get %v %v\n", nh, pathKey)
 	}
-	var nbytes []byte
+	if nh == nil {
+		return nil, nil
+	}
+
+	var n node
 	var ok bool
 	var err error
-	if nbytes, ok = mt.sets[node]; !ok {
-		if _, ok = mt.dels[node]; ok {
-			return nil, errors.New(fmt.Sprintf("node %x deleted", node))
+	if n, ok = mt.sets[nh]; !ok {
+		if _, ok = mt.dels[nh]; ok {
+			return nil, errors.New(fmt.Sprintf("nodehash %v deleted", nh))
 		}
+		if n, ok = mt.gets[nh]; !ok {
+			if mt.parent != nil {
+				return mt.parent.get(nh, pathKey)
+			}
+			if nh.hash == nil {
+				return nil, errors.New(fmt.Sprintf("db lookup of nodehash %v with empty hash", nh))
+			}
 
-		if nbytes, ok = mt.gets[node]; !ok {
 			stats.dbgets++
-			var closer io.Closer
-			nbytes, closer, err = mt.db.Get([]byte(node.ToSlice()))
+			var key []byte
+			key, err = nh.key(pathKey)
 			if err != nil {
 				return nil, err
 			}
-			mt.gets[node] = make([]byte, len(nbytes))
 
-			copy(mt.gets[node], nbytes)
-			closer.Close()
-			nbytes, _ = mt.gets[node]
+			var closer io.Closer
+			var dbbytes []byte
+			dbbytes, closer, err = mt.db.Get(key)
+			if err != nil {
+				fmt.Printf("key: %v\n", key)
+				fmt.Printf("pathKey: %v\n", pathKey)
+				fmt.Printf("nh.hash %v\n", nh.hash)
+				return nil, err
+			}
+			defer closer.Close()
+			n, err = deserializeNode(dbbytes)
+			if err != nil {
+				return nil, err
+			}
+			mt.gets[nh] = n
 		}
 	}
-	return nbytes, nil
+	return n, nil
 }
-func (mt *Trie) del(node crypto.Digest) {
+func (mt *Trie) del(nh *nodehash, pathKey nibbles) {
 	if debugTrie {
-		fmt.Printf("del %x\n", node)
+		fmt.Printf("del %v\n", nh)
 	}
-	delete(mt.gets, node)
-	if _, ok := mt.sets[node]; ok {
-		delete(mt.sets, node)
+	if nh == nil {
+		return
+	}
+	delete(mt.gets, nh)
+	if _, ok := mt.sets[nh]; ok {
+		delete(mt.sets, nh)
 	} else {
-		mt.dels[node] = true
+		mt.dels[nh] = pathKey
 	}
 }
-func (mt *Trie) set(node crypto.Digest, data []byte) {
+func (mt *Trie) set(nh *nodehash, n node) {
 	if debugTrie {
-		fmt.Printf("set %x\n", node)
+		fmt.Printf("set %v %v\n", nh, n)
 	}
-	mt.sets[node] = data
-	delete(mt.dels, node)
-	delete(mt.gets, node)
+	if nh == nil {
+		return
+	}
+
+	mt.sets[nh] = n
+	delete(mt.dels, nh)
+	delete(mt.gets, nh)
 }
 
 // Trie descendAdd descends down the trie, adding the valueHash to the node at the end of the key.
 // It returns the hash of the replacement node, or an error.
-func (mt *Trie) descendAdd(node crypto.Digest, pathKey nibbles, remainingKey nibbles, valueHash crypto.Digest) (crypto.Digest, error) {
-	var err error
+func (mt *Trie) descendAdd(nh *nodehash, pathKey nibbles, remainingKey nibbles, valueHash crypto.Digest) (*nodehash, error) {
 	if debugTrie {
-		fmt.Printf("descendAdd %x %x %x %x\n", node, pathKey, remainingKey, valueHash)
+		fmt.Printf("descendAdd %v %v %v %v\n", nh, pathKey, remainingKey, valueHash)
 	}
 
-	nbytes, err := mt.get(node)
+	n, err := mt.get(nh, pathKey)
 	if err != nil {
-		return crypto.Digest{}, err
+		return nil, err
 	}
-
-	n, err := deserializeNode(nbytes)
-	if err != nil {
-		return crypto.Digest{}, err
-	}
-	hash, err := n.descendAdd(mt, pathKey, remainingKey, valueHash)
-	if err == nil && node != hash {
+	newnh, err := n.descendAdd(mt, pathKey, remainingKey, valueHash)
+	if err == nil && newnh != nh {
 		//		mt.db.Delete([]byte(node.ToSlice()), pebble.NoSync)
-		mt.del(node)
+		mt.del(nh, pathKey)
 	}
-	return hash, err
+	return newnh, err
 }
 
 // Trie descendDelete descends down the trie, deleting the valueHash to the node at the end of the key.
-func (mt *Trie) descendDelete(node crypto.Digest, pathKey nibbles, remainingKey nibbles) (crypto.Digest, bool, error) {
-	var err error
-	//	nbytes, closer, err := mt.db.Get([]byte(node.ToSlice()))
-	//	defer closer.Close()
-	//	if err != nil {
-	//		return crypto.Digest{}, false, err
-	//	}
-
-	nbytes, err := mt.get(node)
+func (mt *Trie) descendDelete(nh *nodehash, pathKey nibbles, remainingKey nibbles) (*nodehash, bool, error) {
+	n, err := mt.get(nh, pathKey)
 	if err != nil {
-		return crypto.Digest{}, false, err
+		return nil, false, err
 	}
 
-	n, err := deserializeNode(nbytes)
-	if err != nil {
-		return crypto.Digest{}, false, err
-	}
-
-	hash, found, err := n.descendDelete(mt, pathKey, remainingKey)
-	if found && hash != node && err == nil {
+	newnh, found, err := n.descendDelete(mt, pathKey, remainingKey)
+	if found && newnh != nh && err == nil {
 		//		mt.db.Delete([]byte(node.ToSlice()), pebble.NoSync)
-		mt.del(node)
+		mt.del(nh, pathKey)
 	}
-	return hash, found, err
+	return newnh, found, err
+}
+
+func (mt *Trie) descendHash(nh *nodehash, pathKey nibbles) error {
+	if nh == nil {
+		return nil
+	}
+	if nh.hash == nil {
+		n, err := mt.get(nh, pathKey)
+		if err != nil {
+			return err
+		}
+		_, err = n.hash(mt, pathKey, nh)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // Node methods for adding a new key-value to the trie
-func (rn *RootNode) descendAdd(mt *Trie, pathKey nibbles, remainingKey nibbles, valueHash crypto.Digest) (crypto.Digest, error) {
+func (rn *RootNode) descendAdd(mt *Trie, pathKey nibbles, remainingKey nibbles, valueHash crypto.Digest) (*nodehash, error) {
 	if debugTrie {
-		fmt.Printf("RootNode descendAdd %x %x %x %x\n", rn.child, pathKey, remainingKey, valueHash)
+		fmt.Printf("RootNode descendAdd %v %v %v %v\n", rn.child, pathKey, remainingKey, valueHash)
 	}
+
 	var err error
-	var hash crypto.Digest
-	if rn.child == (crypto.Digest{}) {
+	var nh *nodehash
+	if rn.child == nil {
 		// Root node with a blank crypto digest in the child.  Make a leaf node.
-		hash, err = mt.storeNewLeafNode(remainingKey, remainingKey, valueHash)
+		nh = makeLeafNode(remainingKey, valueHash).set(mt, remainingKey)
 	} else {
-		hash, err = mt.descendAdd(rn.child, pathKey, remainingKey, valueHash)
+		nh, err = mt.descendAdd(rn.child, pathKey, remainingKey, valueHash)
+		if err != nil {
+			return nil, err
+		}
 	}
-	if err != nil {
-		return crypto.Digest{}, err
-	}
-	roothash, err := mt.storeNewRootNode(hash)
-	if err != nil {
-		return crypto.Digest{}, err
-	}
-	return roothash, nil
+	nh = makeRootNode(nh).set(mt, nil)
+	return nh, nil
 }
 
-func (bn *BranchNode) descendAdd(mt *Trie, pathKey nibbles, remainingKey nibbles, valueHash crypto.Digest) (crypto.Digest, error) {
+func (bn *BranchNode) descendAdd(mt *Trie, pathKey nibbles, remainingKey nibbles, valueHash crypto.Digest) (*nodehash, error) {
 	if debugTrie {
-		fmt.Printf("BranchNode descendAdd %x %x %x %x\n", bn.children, pathKey, remainingKey, valueHash)
+		fmt.Printf("BranchNode descendAdd %v %v %v %v\n", bn.children, pathKey, remainingKey, valueHash)
 	}
 	if len(remainingKey) == 0 {
 		// If we're here, then set the value hash in this node, overwriting the old one.
-		return mt.storeNewBranchNode(pathKey, bn.children, valueHash)
+		return makeBranchNode(bn.children, valueHash).set(mt, pathKey), nil
 	}
 
 	// Otherwise, shift out the first nibble and check the children for it.
 	shifted := shiftNibbles(remainingKey, 1)
-	if (bn.children[remainingKey[0]] == crypto.Digest{}) {
-		// Children with crypto.Digest{} in them are available.
-		hash, err := mt.storeNewLeafNode(append(pathKey, remainingKey[0]), shifted, valueHash)
-		if err != nil {
-			return crypto.Digest{}, err
-		}
-		bn.children[remainingKey[0]] = hash
+	if bn.children[remainingKey[0]] == nil {
+		// nil children are available.
+		bn.children[remainingKey[0]] = makeLeafNode(shifted, valueHash).set(mt, append(pathKey, remainingKey[0]))
 	} else {
 		// Not available.  Descend down the branch.
-		hash, err := mt.descendAdd(bn.children[remainingKey[0]], append(pathKey, remainingKey[0]), shifted, valueHash)
+		nh, err := mt.descendAdd(bn.children[remainingKey[0]], append(pathKey, remainingKey[0]), shifted, valueHash)
 		if err != nil {
-			return crypto.Digest{}, err
+			return nil, err
 		}
-		bn.children[remainingKey[0]] = hash
+		bn.children[remainingKey[0]] = nh
 	}
 
-	return mt.storeNewBranchNode(pathKey, bn.children, bn.valueHash)
+	return makeBranchNode(bn.children, bn.valueHash).set(mt, pathKey), nil
 }
 
-func (ln *LeafNode) descendAdd(mt *Trie, pathKey nibbles, remainingKey nibbles, valueHash crypto.Digest) (crypto.Digest, error) {
+func (ln *LeafNode) descendAdd(mt *Trie, pathKey nibbles, remainingKey nibbles, valueHash crypto.Digest) (*nodehash, error) {
 	if debugTrie {
 		fmt.Printf("LeafNode descendAdd %x %x %x %x\n", ln.keyEnd, pathKey, remainingKey, valueHash)
 	}
 	if equalNibbles(ln.keyEnd, remainingKey) {
 		// The two keys are the same. Replace the value.
-		return mt.storeNewLeafNode(append(pathKey, remainingKey...), remainingKey, valueHash)
+		return makeLeafNode(remainingKey, valueHash).set(mt, append(pathKey, remainingKey...)), nil
 	}
 
 	// Calculate the shared nibbles between the leaf node we're on and the key we're inserting.
@@ -517,7 +569,7 @@ func (ln *LeafNode) descendAdd(mt *Trie, pathKey nibbles, remainingKey nibbles, 
 	shiftedLn2 := shiftNibbles(remainingKey, len(shNibbles))
 
 	// Make a branch node.
-	var children [16]crypto.Digest
+	var children [16]*nodehash
 	branchHash := crypto.Digest{}
 
 	// If the existing leaf node has no more nibbles, then store it in the branch node's value slot.
@@ -526,73 +578,56 @@ func (ln *LeafNode) descendAdd(mt *Trie, pathKey nibbles, remainingKey nibbles, 
 	} else {
 		// Otherwise, make a new leaf node that shifts away one nibble, and store it in that nibble's slot
 		// in the branch node.
-		hash, err := mt.storeNewLeafNode(append(pathKey, shiftedLn1[0]), shiftNibbles(shiftedLn1, 1), ln.valueHash)
-		if err != nil {
-			return crypto.Digest{}, err
-		}
-		children[shiftedLn1[0]] = hash
+		children[shiftedLn1[0]] = makeLeafNode(shiftNibbles(shiftedLn1, 1), ln.valueHash).set(mt, append(pathKey, shiftedLn1[0]))
 	}
 
 	// Similarly, for our new insertion, if it has no more nibbles, store it in the branch node's value slot.
 	if len(shiftedLn2) == 0 {
 		if len(shiftedLn1) == 0 {
-			// They can't both be empty, otherwise they would have been caaught earlier in the equalNibbles check.
-			return crypto.Digest{}, fmt.Errorf("both keys are the same but somehow wasn't caught earlier")
+			// They can't both be empty, otherwise they would have been caught earlier in the equalNibbles check.
+			return nil, fmt.Errorf("both keys are the same but somehow wasn't caught earlier")
 		}
 		branchHash = valueHash
 	} else {
 		// Otherwise, make a new leaf node that shifts away one nibble, and store it in that nibble's slot
 		// in the branch node.
-		hash, err := mt.storeNewLeafNode(append(pathKey, shiftedLn2[0]), shiftNibbles(shiftedLn2, 1), valueHash)
-		if err != nil {
-			return crypto.Digest{}, err
-		}
-		children[shiftedLn2[0]] = hash
+		children[shiftedLn2[0]] = makeLeafNode(shiftNibbles(shiftedLn2, 1), valueHash).set(mt, append(pathKey, shiftedLn2[0]))
 	}
-	hash, err := mt.storeNewBranchNode(pathKey, children, branchHash)
-	if err != nil {
-		return crypto.Digest{}, err
-	}
+	nh := makeBranchNode(children, branchHash).set(mt, pathKey)
 	if len(shNibbles) >= 2 {
 		// If there was more than one shared nibble, insert an extension node before the branch node.
-		return mt.storeNewExtensionNode(shNibbles, hash)
+		return makeExtensionNode(shNibbles, nh).set(mt, pathKey), nil
 	}
 	if len(shNibbles) == 1 {
 		// If there is only one shared nibble, we just make a second branch node as opposed to an
 		// extension node with only one shared nibble, the chances are high that we'd have to just
 		// delete that node and replace it with a full branch node soon anyway.
-		var children2 [16]crypto.Digest
-		children2[shNibbles[0]] = hash
-		hash, err = mt.storeNewBranchNode(append(pathKey, shNibbles[0]), children2, crypto.Digest{})
-		if err != nil {
-			return crypto.Digest{}, err
-		}
-		// return the second branch node.
-		return hash, nil
+		var children2 [16]*nodehash
+		children2[shNibbles[0]] = nh
+		return makeBranchNode(children2, crypto.Digest{}).set(mt, append(pathKey, shNibbles[0])), nil
 	}
 	// There are no shared nibbles anymore, so just return the branch node.
-	return hash, nil
+	return nh, nil
 }
 
-func (en *ExtensionNode) descendAdd(mt *Trie, pathKey nibbles, remainingKey nibbles, valueHash crypto.Digest) (crypto.Digest, error) {
+func (en *ExtensionNode) descendAdd(mt *Trie, pathKey nibbles, remainingKey nibbles, valueHash crypto.Digest) (*nodehash, error) {
 	if debugTrie {
 		fmt.Printf("ExtensionNode descendAdd %x %x %x %x\n", en.sharedKey, pathKey, remainingKey, valueHash)
 	}
-	var err error
 	// Calculate the shared nibbles between the key we're adding and this extension node.
 	shNibbles := sharedNibbles(en.sharedKey, remainingKey)
 	if len(shNibbles) == len(en.sharedKey) {
 		// The entire extension node is shared.  descend.
 		shifted := shiftNibbles(remainingKey, len(shNibbles))
-		hash, err := mt.descendAdd(en.child, append(pathKey, shNibbles...), shifted, valueHash)
+		nh, err := mt.descendAdd(en.child, append(pathKey, shNibbles...), shifted, valueHash)
 		if err != nil {
-			return crypto.Digest{}, err
+			return nil, err
 		}
-		return mt.storeNewExtensionNode(shNibbles, hash)
+		return makeExtensionNode(shNibbles, nh).set(mt, pathKey), nil
 	}
 
 	// we have to upgrade part or all of this extension node into a branch node.
-	var children [16]crypto.Digest
+	var children [16]*nodehash
 	branchHash := crypto.Digest{}
 	// what's left of the extension node shared key after removing the shared part gets
 	// attached to the new branch node.
@@ -600,11 +635,7 @@ func (en *ExtensionNode) descendAdd(mt *Trie, pathKey nibbles, remainingKey nibb
 	if len(shifted) >= 2 {
 		// if there's two or more nibbles left, make another extension node.
 		shifted2 := shiftNibbles(shifted, 1)
-		hash, err := mt.storeNewExtensionNode(shifted2, en.child)
-		if err != nil {
-			return crypto.Digest{}, err
-		}
-		children[shifted[0]] = hash
+		children[shifted[0]] = makeExtensionNode(shifted2, en.child).set(mt, nil)
 	} else {
 		// if there's only one nibble left, store the child in the branch node.
 		// there can't be no nibbles left, or the earlier entire-node-shared case would have been triggered.
@@ -616,93 +647,169 @@ func (en *ExtensionNode) descendAdd(mt *Trie, pathKey nibbles, remainingKey nibb
 	shifted = shiftNibbles(remainingKey, len(shNibbles))
 	if len(shifted) > 0 {
 		shifted2 := shiftNibbles(shifted, 1)
-		hash, err := mt.storeNewLeafNode(append(append(pathKey, shNibbles...), shifted[0]), shifted2, valueHash)
-		if err != nil {
-			return crypto.Digest{}, err
-		}
 		// we know this slot will be empty because it's the first nibble that differed from the
 		// only other occupant in the child arrays, the one that leads to the extension node's child.
-		children[shifted[0]] = hash
+		children[shifted[0]] = makeLeafNode(shifted2, valueHash).set(mt, append(append(pathKey, shNibbles...), shifted[0]))
 	} else {
 		// if the key is no more, store it in the branch node's value hash slot.
 		branchHash = valueHash
 	}
-	hash, err := mt.storeNewBranchNode(append(pathKey, shNibbles...), children, branchHash)
+	nh := makeBranchNode(children, branchHash).set(mt, append(pathKey, shNibbles...))
 
 	// the shared bits of the extension node get smaller
-	if err == nil && len(shNibbles) > 0 {
+	if len(shNibbles) > 0 {
 		// still some shared key left, store them in an extension node
 		// and point in to the new branch node
-		return mt.storeNewExtensionNode(shNibbles, hash)
+		return makeExtensionNode(shNibbles, nh).set(mt, nil), nil
 	}
 	// or else there there is no shared key left, and the extension node is destroyed.
-	return hash, err
+	return nh, nil
 }
 
 // Node methods for deleting a key from the trie
-func (rn *RootNode) descendDelete(mt *Trie, pathKey nibbles, remainingKey nibbles) (crypto.Digest, bool, error) {
-	hash, found, err := mt.descendDelete(rn.child, pathKey, remainingKey)
+func (rn *RootNode) descendDelete(mt *Trie, pathKey nibbles, remainingKey nibbles) (*nodehash, bool, error) {
+	nh, found, err := mt.descendDelete(rn.child, pathKey, remainingKey)
 	if err == nil && found {
-		roothash, err := mt.storeNewRootNode(hash)
-		return roothash, true, err
+		return makeRootNode(nh).set(mt, nil), true, nil
 	}
-	return crypto.Digest{}, false, err
+	return nil, false, err
 }
 
-func (ln *LeafNode) descendDelete(mt *Trie, pathKey nibbles, remainingKey nibbles) (crypto.Digest, bool, error) {
-	return crypto.Digest{}, equalNibbles(remainingKey, ln.keyEnd), nil
+func (ln *LeafNode) descendDelete(mt *Trie, pathKey nibbles, remainingKey nibbles) (*nodehash, bool, error) {
+	return nil, equalNibbles(remainingKey, ln.keyEnd), nil
 }
-func (en *ExtensionNode) descendDelete(mt *Trie, pathKey nibbles, remainingKey nibbles) (crypto.Digest, bool, error) {
+
+func (en *ExtensionNode) descendDelete(mt *Trie, pathKey nibbles, remainingKey nibbles) (*nodehash, bool, error) {
 	var err error
 	if len(remainingKey) == 0 {
 		// can't stop on an exension node
-		return crypto.Digest{}, false, fmt.Errorf("key too short")
+		return nil, false, fmt.Errorf("key too short")
 	}
 	shNibbles := sharedNibbles(remainingKey, en.sharedKey)
 	if len(shNibbles) == len(en.sharedKey) {
 		shifted := shiftNibbles(remainingKey, len(en.sharedKey))
-		hash, found, err := mt.descendDelete(en.child, append(pathKey, shNibbles...), shifted)
-		if err == nil && found && (hash != crypto.Digest{}) {
+		nh, found, err := mt.descendDelete(en.child, append(pathKey, shNibbles...), shifted)
+		if err == nil && found && nh != nil {
 			// the key was found below this node and deleted,
 			// make a new extension node pointing to its replacement.
-			hash, err = mt.storeNewExtensionNode(en.sharedKey, hash)
+			nh = makeExtensionNode(en.sharedKey, nh).set(mt, nil)
 		}
 		// returns empty digest if there's nothing left.
-		return hash, found, err
+		return nh, found, err
 	}
 	// didn't match the entire extension node.
-	return crypto.Digest{}, false, err
+	return nil, false, err
 }
-func (bn *BranchNode) descendDelete(mt *Trie, pathKey nibbles, remainingKey nibbles) (crypto.Digest, bool, error) {
+
+func (bn *BranchNode) descendDelete(mt *Trie, pathKey nibbles, remainingKey nibbles) (*nodehash, bool, error) {
 	if len(remainingKey) == 0 {
 		if (bn.valueHash == crypto.Digest{}) {
 			// valueHash is empty -- key not found.
-			return crypto.Digest{}, false, nil
+			return nil, false, nil
 		}
-		// reset the value to the empty hash if not empty.
-		// update the branch node if there are children.
+		// delete this branch's value hash. reset the value to the empty hash.
+		// update the branch node if there are children, or remove it completely.
 		for i := 0; i < 16; i++ {
-			if (bn.children[i] != crypto.Digest{}) {
-				hash, err := mt.storeNewBranchNode(append(pathKey, byte(i)), bn.children, crypto.Digest{})
-				return hash, true, err
+			if bn.children[i] != nil {
+				return makeBranchNode(bn.children, crypto.Digest{}).set(mt, pathKey), true, nil
 			}
 		}
-		// no children, so just return the empty hash.
-		return crypto.Digest{}, true, nil
+		// no children, so just return a nil *nodehash
+		return nil, true, nil
 	}
 	// descend into the branch node.
-	if bn.children[remainingKey[0]] == (crypto.Digest{}) {
+	if bn.children[remainingKey[0]] == nil {
 		// no child at this index.  key not found.
-		return crypto.Digest{}, false, nil
+		return nil, false, nil
 	}
 	shifted := shiftNibbles(remainingKey, 1)
-	hash, found, err := mt.descendDelete(bn.children[remainingKey[0]], append(pathKey, remainingKey[0]), shifted)
+	nh, found, err := mt.descendDelete(bn.children[remainingKey[0]], append(pathKey, remainingKey[0]), shifted)
 	if err == nil && found {
-		bn.children[remainingKey[0]] = hash
-		hash, err = mt.storeNewBranchNode(pathKey, bn.children, bn.valueHash)
-		return hash, true, err
+		bn.children[remainingKey[0]] = nh
+		return makeBranchNode(bn.children, bn.valueHash).set(mt, pathKey), true, nil
 	}
-	return crypto.Digest{}, false, err
+	return nil, false, err
+}
+
+func (rn *RootNode) hash(mt *Trie, pathKey nibbles, nh *nodehash) ([]byte, error) {
+	err := mt.descendHash(rn.child, pathKey)
+	if err != nil {
+		return nil, err
+	}
+	bytes, err := serializeRootNode(rn)
+	if err == nil {
+		nh.setHash(bytes)
+	}
+	return bytes, err
+}
+func (ln *LeafNode) hash(mt *Trie, pathKey nibbles, nh *nodehash) ([]byte, error) {
+	bytes, err := serializeLeafNode(ln)
+	if err == nil {
+		nh.setHash(bytes)
+	}
+	return bytes, err
+}
+func (en *ExtensionNode) hash(mt *Trie, pathKey nibbles, nh *nodehash) ([]byte, error) {
+	err := mt.descendHash(en.child, append(pathKey, en.sharedKey...))
+	if err != nil {
+		return nil, err
+	}
+	bytes, err := serializeExtensionNode(en)
+	if err == nil {
+		nh.setHash(bytes)
+	}
+	return bytes, err
+}
+func (bn *BranchNode) hash(mt *Trie, pathKey nibbles, nh *nodehash) ([]byte, error) {
+	for i := 0; i < 16; i++ {
+		err := mt.descendHash(bn.children[i], append(pathKey, byte(i)))
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	bytes, err := serializeBranchNode(bn)
+	if err == nil {
+		nh.setHash(bytes)
+	}
+	return bytes, err
+}
+
+func (rn *RootNode) set(mt *Trie, fullpath nibbles) *nodehash {
+	stats.rootnodesets++
+	nh := &nodehash{}
+	path := make(nibbles, len(fullpath))
+	copy(path, fullpath)
+	nh.path = &path
+	mt.set(nh, rn)
+	return nh
+}
+func (ln *LeafNode) set(mt *Trie, fullpath nibbles) *nodehash {
+	stats.leafnodesets++
+	nh := &nodehash{}
+	path := make(nibbles, len(fullpath))
+	copy(path, fullpath)
+	nh.path = &path
+	mt.set(nh, ln)
+	return nh
+}
+func (en *ExtensionNode) set(mt *Trie, fullpath nibbles) *nodehash {
+	stats.extnodesets++
+	nh := &nodehash{}
+	path := make(nibbles, len(fullpath))
+	copy(path, fullpath)
+	nh.path = &path
+	mt.set(nh, en)
+	return nh
+}
+func (bn *BranchNode) set(mt *Trie, fullpath nibbles) *nodehash {
+	stats.branchnodesets++
+	nh := &nodehash{}
+	path := make(nibbles, len(fullpath))
+	copy(path, fullpath)
+	nh.path = &path
+	mt.set(nh, bn)
+	return nh
 }
 
 // Node serializers / deserializers
@@ -715,10 +822,14 @@ func deserializeRootNode(data []byte) (*RootNode, error) {
 	if data[0] != 0 {
 		return nil, errors.New("invalid prefix for root node")
 	}
-	rn := &RootNode{}
-	rn.child = crypto.Digest(data[1:33])
-	return rn, nil
+	hash := new(crypto.Digest)
+	copy(hash[:], data[1:33])
+	if *hash == (crypto.Digest{}) {
+		return makeRootNode(nil), nil
+	}
+	return makeRootNode(&nodehash{hash: hash}), nil
 }
+
 func deserializeExtensionNode(data []byte) (*ExtensionNode, error) {
 	if data[0] != 1 && data[0] != 2 {
 		return nil, errors.New("invalid prefix for extension node")
@@ -727,17 +838,20 @@ func deserializeExtensionNode(data []byte) (*ExtensionNode, error) {
 	if len(data) < 33 {
 		return nil, errors.New("data too short to be an extension node")
 	}
+
 	sharedKey, err := unpack(data[33:], data[0] == 1)
 	if err != nil {
 		return nil, err
 	}
-	en := &ExtensionNode{}
-	en.child = crypto.Digest(data[1:33])
-	en.sharedKey = sharedKey
-	if len(en.sharedKey) == 0 {
+	if len(sharedKey) == 0 {
 		return nil, errors.New("sharedKey can't be empty in an extension node")
 	}
-	return en, nil
+	hash := new(crypto.Digest)
+	copy(hash[:], data[1:33])
+	if *hash == (crypto.Digest{}) {
+		return nil, errors.New("child hash can't be empty in an extension node")
+	}
+	return makeExtensionNode(sharedKey, &nodehash{hash: hash}), nil
 }
 func deserializeBranchNode(data []byte) (*BranchNode, error) {
 	if data[0] != 5 {
@@ -747,12 +861,15 @@ func deserializeBranchNode(data []byte) (*BranchNode, error) {
 		return nil, errors.New("data too short to be a branch node")
 	}
 
-	bn := &BranchNode{}
+	var children [16]*nodehash
 	for i := 0; i < 16; i++ {
-		bn.children[i] = crypto.Digest(data[1+i*32 : 33+i*32])
+		hash := new(crypto.Digest)
+		copy(hash[:], data[1+i*32:33+i*32])
+		if *hash != (crypto.Digest{}) {
+			children[i] = &nodehash{hash: hash}
+		}
 	}
-	bn.valueHash = crypto.Digest(data[513:545])
-	return bn, nil
+	return makeBranchNode(children, crypto.Digest(data[513:545])), nil
 }
 func deserializeLeafNode(data []byte) (*LeafNode, error) {
 	if data[0] != 3 && data[0] != 4 {
@@ -766,10 +883,7 @@ func deserializeLeafNode(data []byte) (*LeafNode, error) {
 	if err != nil {
 		return nil, err
 	}
-	ln := &LeafNode{}
-	ln.valueHash = crypto.Digest(data[1:33])
-	ln.keyEnd = keyEnd
-	return ln, nil
+	return makeLeafNode(keyEnd, crypto.Digest(data[1:33])), nil
 }
 func deserializeNode(nbytes []byte) (node, error) {
 	if len(nbytes) == 0 {
@@ -791,9 +905,15 @@ func deserializeNode(nbytes []byte) (node, error) {
 }
 
 func serializeRootNode(rn *RootNode) ([]byte, error) {
+	var childHash crypto.Digest
+	childHash = crypto.Digest{}
+	if rn.child != nil {
+		childHash = *(rn.child.hash)
+	}
+
 	data := make([]byte, 33)
 	data[0] = 0
-	copy(data[1:33], rn.child[:])
+	copy(data[1:33], childHash[:])
 	return data, nil
 }
 func serializeExtensionNode(en *ExtensionNode) ([]byte, error) {
@@ -807,15 +927,29 @@ func serializeExtensionNode(en *ExtensionNode) ([]byte, error) {
 	} else {
 		data[0] = 2
 	}
-	copy(data[1:33], en.child[:])
+
+	childHash := crypto.Digest{}
+	if en.child != nil {
+		childHash = *(en.child.hash)
+	}
+
+	copy(data[1:33], childHash[:])
 	copy(data[33:], pack)
 	return data, nil
 }
 func serializeBranchNode(bn *BranchNode) ([]byte, error) {
 	data := make([]byte, 545)
 	data[0] = 5
+
 	for i := 0; i < 16; i++ {
-		copy(data[1+i*32:33+i*32], bn.children[i][:])
+		var childHash crypto.Digest
+
+		if bn.children[i] == nil {
+			childHash = crypto.Digest{}
+		} else {
+			childHash = *(bn.children[i].hash)
+		}
+		copy(data[1+i*32:33+i*32], childHash[:])
 	}
 	copy(data[513:545], bn.valueHash[:])
 	return data, nil
@@ -842,59 +976,51 @@ func (mt *Trie) DotGraph(keysAdded [][]byte, valuesAdded [][]byte) string {
 	for i := 0; i < len(keysAdded); i++ {
 		keys += fmt.Sprintf("%x = %x\\n", keysAdded[i], valuesAdded[i])
 	}
-	fmt.Printf("rootHash: %x\n", mt.rootHash)
-	fmt.Printf("pendingRoot: %x\n", mt.pendingRoot)
-	rootHash := *(mt.RootHash())
-
-	return fmt.Sprintf("digraph trie { key [shape=box, label=\"key/value inserted:\\n%s\"];\n %s }\n", keys, mt.dotGraph(rootHash))
+	fmt.Printf("root: %v\n", mt.root)
+	return fmt.Sprintf("digraph trie { key [shape=box, label=\"key/value inserted:\\n%s\"];\n %s }\n", keys, mt.dotGraph(mt.root, nibbles{}))
 }
-func (mt *Trie) dotGraph(hash crypto.Digest) string {
-	var node node
+func (mt *Trie) dotGraph(nh *nodehash, path nibbles) string {
 	var err error
-	nbytes, err := mt.get(hash)
+	node, err := mt.get(nh, path)
 	//	nbytes, closer, err := mt.db.Get([]byte(hash.ToSlice()))
 	//	defer closer.Close()
-	if err != nil {
-		return ""
-	}
-	node, err = deserializeNode(nbytes)
 	if err != nil {
 		return ""
 	}
 
 	switch n := node.(type) {
 	case *RootNode:
-		return fmt.Sprintf("n%s [label=\"root\" shape=box];\n", hash) +
-			fmt.Sprintf("n%s -> n%s;\n", hash, n.child) +
-			mt.dotGraph(n.child)
+		return fmt.Sprintf("n%p [label=\"root\" shape=box];\n", nh) +
+			fmt.Sprintf("n%p -> n%p;\n", nh, n.child) +
+			mt.dotGraph(n.child, path)
 	case *LeafNode:
 		ln := n
-		return fmt.Sprintf("n%s [label=\"leaf\\nkeyEnd:%x\\nvalueHash:%s\" shape=box];\n", hash, ln.keyEnd, ln.valueHash)
+		return fmt.Sprintf("n%p [label=\"leaf\\nkeyEnd:%x\\nvalueHash:%s\" shape=box];\n", nh, ln.keyEnd, ln.valueHash)
 	case *ExtensionNode:
 		en := n
-		return fmt.Sprintf("n%s [label=\"extension\\nshKey:%x\" shape=box];\n", hash, en.sharedKey) +
-			fmt.Sprintf("n%s -> n%s;\n", hash, n.child) +
-			mt.dotGraph(n.child)
+		return fmt.Sprintf("n%p [label=\"extension\\nshKey:%x\" shape=box];\n", nh, en.sharedKey) +
+			fmt.Sprintf("n%p -> n%p;\n", nh, n.child) +
+			mt.dotGraph(n.child, append(path, en.sharedKey...))
 	case *BranchNode:
 		bn := n
 		var indexesFilled string
 		indexesFilled = "--"
 		for i, child := range bn.children {
-			if child != (crypto.Digest{}) {
+			if child != nil {
 				indexesFilled += fmt.Sprintf("%x ", i)
 			}
 		}
 		indexesFilled += "--"
 
-		s := fmt.Sprintf("n%s [label=\"branch\\nindexesFilled:%s\\nvalueHash:%s\" shape=box];\n", hash, indexesFilled, bn.valueHash)
+		s := fmt.Sprintf("n%p [label=\"branch\\nindexesFilled:%s\\nvalueHash:%s\" shape=box];\n", nh, indexesFilled, bn.valueHash)
 		for _, child := range n.children {
-			if child != (crypto.Digest{}) {
-				s += fmt.Sprintf("n%s -> n%s;\n", hash, child)
+			if child != nil {
+				s += fmt.Sprintf("n%p -> n%p;\n", nh, child)
 			}
 		}
-		for _, child := range n.children {
-			if child != (crypto.Digest{}) {
-				s += mt.dotGraph(child)
+		for childrenIndex, child := range n.children {
+			if child != nil {
+				s += mt.dotGraph(child, append(path, byte(childrenIndex)))
 			}
 		}
 		return s

@@ -50,4 +50,5 @@ if [[ ${#png_files[@]} -eq 0 ]]; then
 fi
 
 # Use 'convert' to stack the PNG images vertically and create a multi-page PDF
+convert "${png_files[@]}" "$output_pdf"
 echo "Conversion completed. Output PDF: $output_pdf"
