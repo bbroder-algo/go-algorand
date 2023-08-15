@@ -78,10 +78,10 @@ func TestTrieAdd4mFrom2m(t *testing.T) {
 
 		}
 		epoch = time.Now().Truncate(time.Millisecond)
-		fmt.Println("committing:", epoch, " m:", m, "\n", stats.String(), "len(mt.sets):", len(mt.sets), "len(mt.gets):", len(mt.gets), "len(mt.dels):", len(mt.dels))
+		//		fmt.Println(epoch, " m:", m, "\n", stats.String(), "len(mt.sets):", len(mt.sets), "len(mt.gets):", len(mt.gets), "len(mt.dels):", len(mt.dels))
 		require.NoError(t, mt.Commit())
 		epoch = time.Now().Truncate(time.Millisecond)
-		fmt.Println("committed now:", epoch, " m:", m, "\n", stats.String(), "len(mt.sets):", len(mt.sets), "len(mt.gets):", len(mt.gets), "len(mt.dels):", len(mt.dels))
+		fmt.Println(epoch, " m:", m, "\n", stats.String(), "len(mt.sets):", len(mt.sets), "len(mt.gets):", len(mt.gets), "len(mt.dels):", len(mt.dels))
 	}
 	fmt.Println("Done", total, "random key/value pair insertions from ", pairs, "keys")
 }
