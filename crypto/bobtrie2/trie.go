@@ -387,10 +387,6 @@ func (mt *Trie) merge() error {
 }
 
 func (mt *Trie) Commit() error {
-	mt.root.descendHash()
-	//    mt.ClearPending()
-	return nil
-
 	if mt.parent != nil {
 		mt.merge()
 		return mt.parent.Commit()
@@ -398,10 +394,10 @@ func (mt *Trie) Commit() error {
 
 	b := mt.db.NewBatch()
 	if mt.root != nil {
-		//		err := mt.descendHashCommit(mt.root, b)
-		//		if err != nil {
-		//			return err
-		//		}
+		err := mt.root.descendHashCommit(b)
+		if err != nil {
+			return err
+		}
 	}
 	for k := range mt.dels {
 		options := &pebble.WriteOptions{}
@@ -421,7 +417,7 @@ func (mt *Trie) Commit() error {
 		return err
 	}
 
-	mt.ClearPending()
+	//	mt.ClearPending()
 
 	return nil
 }
