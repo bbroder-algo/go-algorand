@@ -22,7 +22,7 @@ import (
 	"github.com/algorand/go-algorand/crypto"
 	"github.com/stretchr/testify/require"
 	"os"
-	"runtime"
+	//	"runtime"
 	"time"
 	//    "strconv"
 	"math/rand"
@@ -57,16 +57,17 @@ func TestTrieAdd4mFrom2m(t *testing.T) {
 	}
 	epoch := time.Now().Truncate(time.Millisecond)
 	batchSize := 250_000
-	//	batchSize := 5
+	//batchSize := 5
 	total := 400_000_000_000
 	//	total := 39
+	prior_epoch := time.Now().Truncate(time.Millisecond)
 	fmt.Println("Adding", total, "random key/value pairs in batches of", batchSize, "at", epoch)
 	for m := 0; m < total; m++ {
 		epoch := time.Now().Truncate(time.Millisecond)
-		fmt.Println("adding ", batchSize, " random key/value pairs", epoch)
-		var runtime_info runtime.MemStats
-		runtime.ReadMemStats(&runtime_info)
-		fmt.Println("runtime_info.Alloc:", runtime_info.Alloc, "runtime_info.TotalAlloc:", runtime_info.TotalAlloc, "runtime_info.HeapAlloc:", runtime_info.HeapAlloc, "runtime_info.HeapSys:", runtime_info.HeapSys, "runtime_info.HeapIdle:", runtime_info.HeapIdle, "runtime_info.HeapReleased:", runtime_info.HeapReleased, "runtime_info.HeapObjects:", runtime_info.HeapObjects)
+		fmt.Println("\nadding", batchSize, "random key/value pairs", epoch)
+		//		var runtime_info runtime.MemStats
+		//		runtime.ReadMemStats(&runtime_info)
+		//		fmt.Println("runtime_info.Alloc:", runtime_info.Alloc, "runtime_info.TotalAlloc:", runtime_info.TotalAlloc, "runtime_info.HeapAlloc:", runtime_info.HeapAlloc, "runtime_info.HeapSys:", runtime_info.HeapSys, "runtime_info.HeapIdle:", runtime_info.HeapIdle, "runtime_info.HeapReleased:", runtime_info.HeapReleased, "runtime_info.HeapObjects:", runtime_info.HeapObjects)
 		for i := 0; i < batchSize; i++ {
 			m++
 			rand_k := pseudoRand() % uint32(pairs)
@@ -81,7 +82,10 @@ func TestTrieAdd4mFrom2m(t *testing.T) {
 		//		fmt.Println(epoch, " m:", m, "\n", stats.String(), "len(mt.sets):", len(mt.sets), "len(mt.gets):", len(mt.gets), "len(mt.dels):", len(mt.dels))
 		require.NoError(t, mt.Commit())
 		epoch = time.Now().Truncate(time.Millisecond)
-		fmt.Println(epoch, " m:", m, "\n", stats.String(), "len(mt.sets):", len(mt.sets), "len(mt.gets):", len(mt.gets), "len(mt.dels):", len(mt.dels))
+		time_consumed := epoch.Sub(prior_epoch)
+		rh, _ := mt.RootHash()
+		fmt.Println("time", time_consumed, "new hash:", rh, stats.String(), "len(mt.sets):", len(mt.sets), "len(mt.gets):", len(mt.gets), "len(mt.dels):", len(mt.dels))
+		prior_epoch = epoch
 	}
 	fmt.Println("Done", total, "random key/value pair insertions from ", pairs, "keys")
 }
@@ -100,7 +104,7 @@ func TestMakeTrie(t *testing.T) {
 }
 
 func makenodehash(cd crypto.Digest) node {
-	return makeDBNode(&cd)
+	return makeDBNode(&cd, []byte{0x01, 0x02, 0x03, 0x04})
 }
 
 func TestNodeSerialization(t *testing.T) {
