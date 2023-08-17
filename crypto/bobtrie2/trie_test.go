@@ -57,7 +57,7 @@ func TestTrieAdd4mFrom2m(t *testing.T) {
 	}
 	epoch := time.Now().Truncate(time.Millisecond)
 	batchSize := 250_000
-	//batchSize := 5
+	//	batchSize := 5
 	total := 400_000_000_000
 	//	total := 39
 	prior_epoch := time.Now().Truncate(time.Millisecond)
@@ -84,7 +84,8 @@ func TestTrieAdd4mFrom2m(t *testing.T) {
 		epoch = time.Now().Truncate(time.Millisecond)
 		time_consumed := epoch.Sub(prior_epoch)
 		rh, _ := mt.RootHash()
-		fmt.Println("time", time_consumed, "new hash:", rh, stats.String(), "len(mt.sets):", len(mt.sets), "len(mt.gets):", len(mt.gets), "len(mt.dels):", len(mt.dels))
+		fmt.Println("time", time_consumed, "new hash:", rh, stats.String(), "len(mt.dels):", len(mt.dels))
+		//        panic("aah")
 		prior_epoch = epoch
 	}
 	fmt.Println("Done", total, "random key/value pair insertions from ", pairs, "keys")
