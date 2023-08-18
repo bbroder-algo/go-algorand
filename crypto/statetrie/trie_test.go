@@ -39,6 +39,25 @@ func pseudoRand() uint32 {
 	return x
 }
 
+func TestTrieSpecial (t *testing.T) {
+	mt, err := MakeTrie()
+	require.NoError(t, err)
+	verifyNewTrie(t, mt)
+    key1 := []byte{0x08, 0x0e, 0x02, 0x08}
+    key2 := []byte{0x0b, 0x09, 0x0a, 0x0c}
+    key3 := []byte{0x08, 0x0c, 0x09, 0x00}
+    key4 := []byte{0x03, 0x0c, 0x04, 0x0c}
+    key5 := []byte{0x07, 0x0f, 0x0b, 0x04}
+    mt.Add(key1, key1)
+    mt.Add(key2, key2)
+    mt.Add(key3, key3)
+    mt.Add(key4, key4)
+    mt.Add(key5, key5)
+    mt.Commit()
+}
+
+
+
 func TestTrieAdd4mFrom2m(t *testing.T) {
 	mt, err := MakeTrie()
 	require.NoError(t, err)
@@ -57,7 +76,7 @@ func TestTrieAdd4mFrom2m(t *testing.T) {
 	}
 	epoch := time.Now().Truncate(time.Millisecond)
 	batchSize := 250_000
-	//	batchSize := 5
+//	batchSize := 5
 	total := 400_000_000_000
 	//	total := 39
 	prior_epoch := time.Now().Truncate(time.Millisecond)

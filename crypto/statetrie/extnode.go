@@ -32,7 +32,9 @@ type ExtensionNode struct {
 
 func makeExtensionNode(sharedKey nibbles, child node, key nibbles) *ExtensionNode {
 	stats.makeextensions++
-	en := &ExtensionNode{sharedKey: sharedKey, child: child, key: key}
+//	en := &ExtensionNode{sharedKey: sharedKey, child: child, key: key}
+	en := &ExtensionNode{sharedKey: sharedKey, child: child, key: make(nibbles, len(key))}
+    copy(en.key, key)
 	return en
 }
 func (en *ExtensionNode) descendAdd(mt *Trie, pathKey nibbles, remainingKey nibbles, valueHash crypto.Digest) (node, error) {
@@ -55,11 +57,14 @@ func (en *ExtensionNode) descendAdd(mt *Trie, pathKey nibbles, remainingKey nibb
 	branchHash := crypto.Digest{}
 	// what's left of the extension node shared key after removing the shared part gets
 	// attached to the new branch node.
-	shifted := shiftNibbles(en.sharedKey, len(shNibbles))
+	shifted := shiftNibbles(en.sharedKey, len(shNibbles))  // 04 04
 	if len(shifted) >= 2 {
 		// if there's two or more nibbles left, make another extension node.
-		shifted2 := shiftNibbles(shifted, 1)
-		en2 := makeExtensionNode(shifted2, en.child, append(pathKey, shifted[0]))
+		shifted2 := shiftNibbles(shifted, 1)  // 04
+        enKey := pathKey[:] // ... 08 0d
+        enKey = append(enKey, shNibbles...)
+        enKey = append(enKey, shifted[0])  // ... 08 0d    04
+		en2 := makeExtensionNode(shifted2, en.child, enKey)
 		mt.addNode(en2)
 		children[shifted[0]] = en2
 	} else {
@@ -75,7 +80,10 @@ func (en *ExtensionNode) descendAdd(mt *Trie, pathKey nibbles, remainingKey nibb
 		shifted3 := shiftNibbles(shifted, 1)
 		// we know this slot will be empty because it's the first nibble that differed from the
 		// only other occupant in the child arrays, the one that leads to the extension node's child.
-		ln := makeLeafNode(shifted3, valueHash, append(append(pathKey, shNibbles...), shifted[0]))
+        lnKey := pathKey[:]
+        lnKey = append(lnKey, shNibbles...)
+        lnKey = append(lnKey, shifted[0])
+		ln := makeLeafNode(shifted3, valueHash, lnKey)
 		mt.addNode(ln)
 		children[shifted[0]] = ln
 	} else {
@@ -83,7 +91,9 @@ func (en *ExtensionNode) descendAdd(mt *Trie, pathKey nibbles, remainingKey nibb
 		branchHash = valueHash
 	}
 
-	replacement := makeBranchNode(children, branchHash, append(pathKey, shNibbles...))
+    bnKey := pathKey[:]
+    bnKey = append(bnKey, shNibbles...)
+	replacement := makeBranchNode(children, branchHash, bnKey)
 	mt.addNode(replacement)
 	// the shared bits of the extension node get smaller
 	if len(shNibbles) > 0 {
@@ -95,7 +105,6 @@ func (en *ExtensionNode) descendAdd(mt *Trie, pathKey nibbles, remainingKey nibb
 		return en, nil
 	}
 	// or else there there is no shared key left, and the extension node is destroyed.
-	mt.delNode(en)
 	return replacement, nil
 }
 func (en *ExtensionNode) descendDelete(mt *Trie, pathKey nibbles, remainingKey nibbles) (node, bool, error) {
@@ -115,7 +124,8 @@ func (en *ExtensionNode) descendDelete(mt *Trie, pathKey nibbles, remainingKey n
 			// the key was found below this node and deleted,
 			// make a new extension node pointing to its replacement.
 			mt.addNode(replacementChild)
-			return makeExtensionNode(en.sharedKey, replacementChild, pathKey), true, nil
+            enKey := pathKey[:]
+			return makeExtensionNode(en.sharedKey, replacementChild, enKey), true, nil
 		}
 		// returns empty digest if there's nothing left.
 		return nil, found, err
@@ -141,7 +151,7 @@ func (en *ExtensionNode) descendHashWithCommit(b *pebble.Batch) error {
 		options := &pebble.WriteOptions{}
 		stats.dbsets++
 		if debugTrie {
-			fmt.Printf("db.set en key %x dbkey %x\n", en.getKey(), en.getDBKey())
+			fmt.Printf("db.set en key %x %v\n", en.getKey(), en)
 		}
 		if b != nil {
 			return b.Set(en.getDBKey(), bytes, options)
@@ -173,7 +183,9 @@ func deserializeExtensionNode(data []byte, key nibbles) (*ExtensionNode, error) 
 	copy(hash[:], data[1:33])
 	var child node
 	if *hash != (crypto.Digest{}) {
-		child = makeDBNode(hash, append(key, sharedKey...))
+        chKey := key[:]
+        chKey = append(chKey, sharedKey...)
+		child = makeDBNode(hash, chKey)
 	}
 	return makeExtensionNode(sharedKey, child, key), nil
 }
@@ -194,6 +206,23 @@ func (en *ExtensionNode) serialize() ([]byte, error) {
 	}
 	copy(data[33:], pack)
 	return data, nil
+}
+func (en *ExtensionNode) lambda(l func (node)) {
+    l(en)
+    if en.child != nil {
+        en.child.lambda(l)
+    }
+}
+func (en *ExtensionNode) evict(eviction func(node) bool) {
+	if eviction(en) {
+        fmt.Printf("evicting ext node %x\n", en.getKey())
+		en.child = makeDBNode(en.child.getHash(), en.child.getKey())
+        stats.evictions++
+	} else {
+		if en.child != nil {
+			en.child.evict(eviction)
+		}
+	}
 }
 func (en *ExtensionNode) getKey() nibbles {
 	return en.key

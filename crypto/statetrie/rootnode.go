@@ -31,13 +31,14 @@ type RootNode struct {
 
 func makeRootNode(child node) *RootNode {
 	stats.makeroots++
-	return &RootNode{child: child, key: nibbles{}}
+	return &RootNode{child: child}
 }
 func (rn *RootNode) descendAdd(mt *Trie, pathKey nibbles, remainingKey nibbles, valueHash crypto.Digest) (node, error) {
 	var err error
 	if rn.child == nil {
 		// Root node with a blank crypto digest in the child.  Make a leaf node.
-		rn.child = makeLeafNode(remainingKey, valueHash, pathKey)
+        chKey := pathKey[:]
+		rn.child = makeLeafNode(remainingKey, valueHash, chKey)
 		mt.addNode(rn.child)
 		stats.newrootnode++
 		rn.hash = nil
@@ -105,6 +106,18 @@ func deserializeRootNode(data []byte) (*RootNode, error) {
 	}
 	return makeRootNode(child), nil
 }
+func (rn *RootNode) evict(eviction func(node) bool) {
+    if rn.child != nil {
+        rn.child.evict(eviction)
+    }
+}
+func (rn *RootNode) lambda(l func (node)) {
+    l(rn)
+    if rn.child != nil {
+        rn.child.lambda(l)
+    }
+}
+
 func (rn *RootNode) serialize() ([]byte, error) {
 	data := make([]byte, 33)
 	data[0] = 0

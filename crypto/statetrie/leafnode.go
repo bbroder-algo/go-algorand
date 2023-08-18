@@ -32,9 +32,15 @@ type LeafNode struct {
 
 func makeLeafNode(keyEnd nibbles, valueHash crypto.Digest, key nibbles) *LeafNode {
 	stats.makeleaves++
-	ln := &LeafNode{keyEnd: keyEnd, valueHash: valueHash, key: key}
+//	ln := &LeafNode{keyEnd: keyEnd, valueHash: valueHash, key: key}
+	ln := &LeafNode{keyEnd: keyEnd, valueHash: valueHash, key: make(nibbles, len(key))}
+    copy(ln.key, key)
 	return ln
 }
+func (ln *LeafNode) lambda(l func (node)) {
+    l(ln)
+}
+
 func (ln *LeafNode) descendAdd(mt *Trie, pathKey nibbles, remainingKey nibbles, valueHash crypto.Digest) (node, error) {
 	if equalNibbles(ln.keyEnd, remainingKey) {
 		// The two keys are the same. Replace the value.
@@ -59,7 +65,8 @@ func (ln *LeafNode) descendAdd(mt *Trie, pathKey nibbles, remainingKey nibbles, 
 	} else {
 		// Otherwise, make a new leaf node that shifts away one nibble, and store it in that nibble's slot
 		// in the branch node.
-		ln1 := makeLeafNode(shiftNibbles(shiftedLn1, 1), ln.valueHash, append(append(pathKey, shNibbles...), shiftedLn1[0]))
+        key1 := append(append(pathKey, shNibbles...), shiftedLn1[0])
+		ln1 := makeLeafNode(shiftNibbles(shiftedLn1, 1), ln.valueHash, key1)
 		mt.addNode(ln1)
 		children[shiftedLn1[0]] = ln1
 	}
@@ -74,17 +81,23 @@ func (ln *LeafNode) descendAdd(mt *Trie, pathKey nibbles, remainingKey nibbles, 
 	} else {
 		// Otherwise, make a new leaf node that shifts away one nibble, and store it in that nibble's slot
 		// in the branch node.
-		ln2 := makeLeafNode(shiftNibbles(shiftedLn2, 1), valueHash, append(append(pathKey, shNibbles...), shiftedLn2[0]))
+        key2 := pathKey[:]
+        key2 = append(key2, shNibbles...)
+        key2 = append(key2, shiftedLn2[0])
+		ln2 := makeLeafNode(shiftNibbles(shiftedLn2, 1), valueHash, key2)
 		mt.addNode(ln2)
 		children[shiftedLn2[0]] = ln2
 	}
-	bn2 := makeBranchNode(children, branchHash, append(pathKey, shNibbles...))
+    bn2key := pathKey[:]
+    bn2key = append(bn2key, shNibbles...)
+	bn2 := makeBranchNode(children, branchHash, bn2key)
 	mt.addNode(bn2)
 
 	if len(shNibbles) >= 2 {
 		// If there was more than one shared nibble, insert an extension node before the branch node.
-		mt.addNode(bn2)
-		en := makeExtensionNode(shNibbles, bn2, pathKey)
+//		mt.addNode(bn2)
+        enKey := pathKey[:]
+		en := makeExtensionNode(shNibbles, bn2, enKey)
 		mt.addNode(en)
 		return en, nil
 	}
@@ -92,15 +105,15 @@ func (ln *LeafNode) descendAdd(mt *Trie, pathKey nibbles, remainingKey nibbles, 
 		// If there is only one shared nibble, we just make a second branch node as opposed to an
 		// extension node with only one shared nibble, the chances are high that we'd have to just
 		// delete that node and replace it with a full branch node soon anyway.
-		mt.addNode(bn2)
+//		mt.addNode(bn2)
 		var children2 [16]node
 		children2[shNibbles[0]] = bn2
-		bn3 := makeBranchNode(children2, crypto.Digest{}, pathKey)
+        bnKey := pathKey[:]
+		bn3 := makeBranchNode(children2, crypto.Digest{}, bnKey)
 		mt.addNode(bn3)
 		return bn3, nil
 	}
 	// There are no shared nibbles anymore, so just return the branch node.
-	mt.delNode(ln)
 	return bn2, nil
 }
 func (ln *LeafNode) descendDelete(mt *Trie, pathKey nibbles, remainingKey nibbles) (node, bool, error) {
@@ -117,7 +130,7 @@ func (ln *LeafNode) descendHashWithCommit(b *pebble.Batch) error {
 		options := &pebble.WriteOptions{}
 		stats.dbsets++
 		if debugTrie {
-			fmt.Printf("db.set ln key %x dbkey %x\n", ln.getKey(), ln.getDBKey())
+            fmt.Printf("db.set ln key %x : (%v)\n", ln.getKey(), ln)
 		}
 		if b != nil {
 			return b.Set(ln.getDBKey(), bytes, options)
@@ -140,7 +153,8 @@ func deserializeLeafNode(data []byte, key nibbles) (*LeafNode, error) {
 	if err != nil {
 		return nil, err
 	}
-	return makeLeafNode(keyEnd, crypto.Digest(data[1:33]), key), nil
+    lnKey := key[:]
+	return makeLeafNode(keyEnd, crypto.Digest(data[1:33]), lnKey), nil
 }
 func (ln *LeafNode) serialize() ([]byte, error) {
 	pack, half, err := ln.keyEnd.pack()
@@ -156,6 +170,9 @@ func (ln *LeafNode) serialize() ([]byte, error) {
 	copy(data[1:33], ln.valueHash[:])
 	copy(data[33:], pack)
 	return data, nil
+}
+func (ln *LeafNode) evict(eviction func(node) bool) {
+	return
 }
 func (ln *LeafNode) getKey() nibbles {
 	return ln.key

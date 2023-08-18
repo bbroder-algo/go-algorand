@@ -35,11 +35,12 @@ type triestats struct {
 	addnode        int
 	delnode        int
 	getnode        int
+    evictions      int
 }
 
 var stats triestats
 
 func (s triestats) String() string {
-	return fmt.Sprintf("dbsets: %d, dbgets: %d, dbdeletes: %d, cryptohashes: %d, makeroots: %d, makeleaves: %d, makeextensions: %d, makebranches: %d, makedbnodes: %d, makedbkey: %d, newrootnode: %d, addnode: %d, delnode: %d, getnode: %d",
-		s.dbsets, s.dbgets, s.dbdeletes, s.cryptohashes, s.makeroots, s.makeleaves, s.makeextensions, s.makebranches, s.makedbnodes, s.makedbkey, s.newrootnode, s.addnode, s.delnode, s.getnode)
+	return fmt.Sprintf("dbsets: %d, dbgets: %d, dbdeletes: %d, cryptohashes: %d, makeroots: %d, makeleaves: %d, makeextensions: %d, makebranches: %d, makedbnodes: %d, makedbkey: %d, newrootnode: %d, addnode: %d, delnode: %d, getnode: %d, evictions: %d",
+		s.dbsets, s.dbgets, s.dbdeletes, s.cryptohashes, s.makeroots, s.makeleaves, s.makeextensions, s.makebranches, s.makedbnodes, s.makedbkey, s.newrootnode, s.addnode, s.delnode, s.getnode, s.evictions)
 }

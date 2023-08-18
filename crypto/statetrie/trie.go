@@ -22,6 +22,7 @@ import (
 	"github.com/algorand/go-algorand/crypto"
 	"github.com/cockroachdb/pebble"
 	"github.com/cockroachdb/pebble/vfs"
+	"math/rand"
 	"os"
 	"runtime"
 )
@@ -81,6 +82,9 @@ func (mt *Trie) Add(key nibbles, value []byte) (err error) {
 		mt.addNode(mt.root)
 	}
 
+    if debugTrie {
+        fmt.Printf("Add: %x : %v\n", key, crypto.Hash(value))
+    }
 	stats.cryptohashes++
 	_, err = mt.root.descendAdd(mt, []byte{0x01}, key, crypto.Hash(value))
 
@@ -178,10 +182,57 @@ func (mt *Trie) Commit() error {
 	}
 
 	mt.dels = make(map[string]node)
+
+	shouldEvict := func(n node) bool {
+		if _, ok := n.(*BranchNode); ok {
+            bn := n.(*BranchNode)
+            for i := 0; i < 16; i++ {
+                if _, ok2 := bn.children[i].(*BranchNode); ok2 {
+                    return false
+                }
+            }
+            if rand.Intn(100) == 1 {
+                return true
+            }
+		}
+		return false
+	}
+	mt.root.evict(shouldEvict)
 	//	mt.root = makeDBNode(mt.root.getHash(), nibbles{})
 	//    mt.root = nil
 	return nil
 }
+
+func (mt *Trie) countNodes() string {
+    var nodecount struct {
+        branches int
+        leaves int
+        exts int
+        dbnodes int
+        roots int
+    }
+
+    var nc nodecount
+    count := func (n node) {
+        innerCount := func (n node) {
+            switch n.(type) {
+            case *BranchNode:
+                nc.branches++
+            case *LeafNode:
+                nc.leaves++
+            case *ExtensionNode:
+                nc.exts++
+            case *DBNode:
+                nc.dbnodes++
+            }
+        }
+    }()
+    mt.root.lambda(count)
+    return fmt.Sprintf("branches: %d, leaves: %d, exts: %d, dbnodes: %d, roots: %d", nc.branches, nc.leaves, nc.exts, nc.dbnodes, nc.roots)
+}
+
+    
+        
 
 // Trie node get/set/delete operations
 func (mt *Trie) getNode(dbn dbnode) (node, error) {
@@ -194,9 +245,6 @@ func (mt *Trie) getNode(dbn dbnode) (node, error) {
 
 		stats.dbgets++
 
-		if debugTrie {
-			fmt.Printf("getNode dbKey %x\n", dbKey)
-		}
 		dbbytes, closer, err := mt.db.Get(dbKey)
 		if err != nil {
 			fmt.Printf("\ndbKey panic: dbkey %x\n", dbKey)
@@ -209,6 +257,9 @@ func (mt *Trie) getNode(dbn dbnode) (node, error) {
 		if err != nil {
 			panic(err)
 		}
+		if debugTrie {
+    		fmt.Printf("getNode %T (%x) : (%v)\n", trieNode, dbKey, trieNode)
+		}
 		return trieNode, nil
 	}
 	return nil, nil
@@ -218,6 +269,9 @@ func (mt *Trie) delNode(n node) {
 	dbKey := n.getDBKey()
 	if dbKey != nil {
 		// note this key for deletion on commit
+		if debugTrie {
+    		fmt.Printf("delNode %T (%x) : (%v)\n", n, dbKey, n)
+		}
 		mt.dels[string(dbKey)] = n
 	}
 }

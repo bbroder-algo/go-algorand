@@ -41,6 +41,8 @@ type node interface {
 	descendHash() error
 	descendHashWithCommit(b *pebble.Batch) error
 	serialize() ([]byte, error)
+	evict(func(node) bool)
+    lambda(func(node))
 }
 
 // Node serializers / deserializers

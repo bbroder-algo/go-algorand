@@ -1,4 +1,5 @@
-// Copyright (C) 2018-2023 Algorand, Inc.
+// Copyright (C) 2017-2023 Algorand, Inc.
+
 // This file is part of go-algorand
 //
 // go-algorand is free software: you can redistribute it and/or modify
@@ -32,7 +33,9 @@ type BranchNode struct {
 
 func makeBranchNode(children [16]node, valueHash crypto.Digest, key nibbles) *BranchNode {
 	stats.makebranches++
-	bn := &BranchNode{children: children, valueHash: valueHash, key: key}
+	bn := &BranchNode{children: children, valueHash: valueHash, key: make(nibbles, len(key))}
+    copy(bn.key, key)
+//	bn := &BranchNode{children: children, valueHash: valueHash, key: key}
 	return bn
 }
 func (bn *BranchNode) descendAdd(mt *Trie, pathKey nibbles, remainingKey nibbles, valueHash crypto.Digest) (node, error) {
@@ -45,18 +48,22 @@ func (bn *BranchNode) descendAdd(mt *Trie, pathKey nibbles, remainingKey nibbles
 
 	// Otherwise, shift out the first nibble and check the children for it.
 	shifted := shiftNibbles(remainingKey, 1)
-	if bn.children[remainingKey[0]] == nil {
+    slot := remainingKey[0]
+	if bn.children[slot] == nil {
 		// nil children are available.
-		bn.children[remainingKey[0]] = makeLeafNode(shifted, valueHash, append(pathKey, remainingKey[0]))
-		mt.addNode(bn.children[remainingKey[0]])
+        lnKey := pathKey[:]
+        lnKey = append (lnKey, slot)
+
+		bn.children[slot] = makeLeafNode(shifted, valueHash, lnKey)
+		mt.addNode(bn.children[slot])
 	} else {
 		// Not available.  Descend down the branch.
-		replacement, err := bn.children[remainingKey[0]].descendAdd(mt, append(pathKey, remainingKey[0]), shifted, valueHash)
+		replacement, err := bn.children[slot].descendAdd(mt, append(pathKey, remainingKey[0]), shifted, valueHash)
 		if err != nil {
 			return nil, err
 		}
 		bn.hash = nil
-		bn.children[remainingKey[0]] = replacement
+		bn.children[slot] = replacement
 	}
 
 	return bn, nil
@@ -71,7 +78,8 @@ func (bn *BranchNode) descendDelete(mt *Trie, pathKey nibbles, remainingKey nibb
 		// update the branch node if there are children, or remove it completely.
 		for i := 0; i < 16; i++ {
 			if bn.children[i] != nil {
-				return makeBranchNode(bn.children, crypto.Digest{}, pathKey), true, nil
+                bnKey := pathKey[:]
+				return makeBranchNode(bn.children, crypto.Digest{}, bnKey), true, nil
 			}
 		}
 		// no children, so just return a nil node
@@ -83,11 +91,14 @@ func (bn *BranchNode) descendDelete(mt *Trie, pathKey nibbles, remainingKey nibb
 		return nil, false, nil
 	}
 	shifted := shiftNibbles(remainingKey, 1)
-	replacementChild, found, err := bn.children[remainingKey[0]].descendDelete(mt, append(pathKey, remainingKey[0]), shifted)
+    lnKey := pathKey[:]
+    lnKey = append (lnKey, remainingKey[0])
+	replacementChild, found, err := bn.children[remainingKey[0]].descendDelete(mt, lnKey, shifted)
 	if found && err == nil {
 		bn.children[remainingKey[0]] = replacementChild
 		mt.addNode(replacementChild)
-		return makeBranchNode(bn.children, bn.valueHash, pathKey), true, nil
+        bnKey := pathKey[:]
+		return makeBranchNode(bn.children, bn.valueHash, bnKey), true, nil
 	}
 	return nil, false, err
 }
@@ -110,7 +121,7 @@ func (bn *BranchNode) descendHashWithCommit(b *pebble.Batch) error {
 		options := &pebble.WriteOptions{}
 		stats.dbsets++
 		if debugTrie {
-			fmt.Printf("db.set bn key %x dbkey %x\n", bn.getKey(), bn.getDBKey())
+			fmt.Printf("db.set bn key %x dbkey %v\n", bn.getKey(), bn)
 		}
 		if b != nil {
 			return b.Set(bn.getDBKey(), bytes, options)
@@ -135,7 +146,9 @@ func deserializeBranchNode(data []byte, key nibbles) (*BranchNode, error) {
 		hash := new(crypto.Digest)
 		copy(hash[:], data[1+i*32:33+i*32])
 		if *hash != (crypto.Digest{}) {
-			children[i] = makeDBNode(hash, append(key, byte(i)))
+            chKey := key[:]
+            chKey = append (chKey, byte(i))
+			children[i] = makeDBNode(hash, chKey)
 		}
 	}
 	value_hash := crypto.Digest(data[513:545])
@@ -153,6 +166,34 @@ func (bn *BranchNode) serialize() ([]byte, error) {
 	copy(data[513:545], bn.valueHash[:])
 	return data, nil
 }
+func (bn *BranchNode) evict(eviction func(node) bool) {
+	if eviction(bn) {
+        if debugTrie {
+            fmt.Printf("evicting branch node %x, (%v)\n", bn.getKey(), bn)
+        }
+		for i := 0; i < 16; i++ {
+			if bn.children[i] != nil && bn.children[i].getHash() != nil {
+				bn.children[i] = makeDBNode(bn.children[i].getHash(), bn.children[i].getKey())
+                stats.evictions++
+			}
+		}
+	} else {
+		for i := 0; i < 16; i++ {
+			if bn.children[i] != nil {
+				bn.children[i].evict(eviction)
+			}
+		}
+	}
+}
+func (bn *BranchNode) lambda(l func(node)) {
+    l(bn)
+    for i := 0; i < 16; i++ {
+        if bn.children[i] != nil {
+            bn.children[i].lambda(l)
+        }
+    }
+}
+
 func (bn *BranchNode) getKey() nibbles {
 	return bn.key
 }
