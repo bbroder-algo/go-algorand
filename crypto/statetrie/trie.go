@@ -14,7 +14,7 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with go-algorand.  If not, see <https://www.gnu.org/licenses/>.
 
-package bobtrie2
+package statetrie
 
 import (
 	"errors"
@@ -30,7 +30,7 @@ const (
 	MaxKeyLength = 65535
 )
 
-var debugTrie = true
+var debugTrie = false
 
 type Trie struct {
 	db     *pebble.DB
@@ -43,7 +43,7 @@ type Trie struct {
 func MakeTrie() (*Trie, error) {
 	var db *pebble.DB
 	var err error
-	if true {
+	if false {
 		fmt.Println("mem db")
 		db, err = pebble.Open("", &pebble.Options{FS: vfs.NewMem()})
 	} else {
