@@ -42,7 +42,7 @@ func (bn *BranchNode) descendAdd(mt *Trie, pathKey nibbles, remainingKey nibbles
 	if len(remainingKey) == 0 {
 		// If we're here, then set the value hash in this node, overwriting the old one.
 		bn.valueHash = valueHash
-        // transition BN.1
+		// transition BN.1
 		bn.hash = nil
 		return bn, nil
 	}
@@ -55,7 +55,7 @@ func (bn *BranchNode) descendAdd(mt *Trie, pathKey nibbles, remainingKey nibbles
 		lnKey := pathKey[:]
 		lnKey = append(lnKey, slot)
 
-        // transition BN.2
+		// transition BN.2
 		bn.children[slot] = makeLeafNode(shifted, valueHash, lnKey)
 		mt.addNode(bn.children[slot])
 	} else {
@@ -65,7 +65,7 @@ func (bn *BranchNode) descendAdd(mt *Trie, pathKey nibbles, remainingKey nibbles
 			return nil, err
 		}
 		bn.hash = nil
-        // transition BN.3
+		// transition BN.3
 		bn.children[slot] = replacement
 	}
 

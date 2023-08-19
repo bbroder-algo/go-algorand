@@ -47,7 +47,7 @@ func (en *ExtensionNode) descendAdd(mt *Trie, pathKey nibbles, remainingKey nibb
 		if err != nil {
 			return nil, err
 		}
-        // transition EN.1
+		// transition EN.1
 		en.child = replacement
 		en.hash = nil
 		return en, nil
@@ -67,12 +67,12 @@ func (en *ExtensionNode) descendAdd(mt *Trie, pathKey nibbles, remainingKey nibb
 		enKey = append(enKey, shifted[0]) // ... 08 0d    04
 		en2 := makeExtensionNode(shifted2, en.child, enKey)
 		mt.addNode(en2)
-        // transition EN.2
+		// transition EN.2
 		children[shifted[0]] = en2
 	} else {
 		// if there's only one nibble left, store the child in the branch node.
 		// there can't be no nibbles left, or the earlier entire-node-shared case would have been triggered.
-        // transition EN.3
+		// transition EN.3
 		children[shifted[0]] = en.child
 	}
 
@@ -88,11 +88,11 @@ func (en *ExtensionNode) descendAdd(mt *Trie, pathKey nibbles, remainingKey nibb
 		lnKey = append(lnKey, shifted[0])
 		ln := makeLeafNode(shifted3, valueHash, lnKey)
 		mt.addNode(ln)
-        // transition EN.4
+		// transition EN.4
 		children[shifted[0]] = ln
 	} else {
 		// if the key is no more, store it in the branch node's value hash slot.
-        // transition EN.5
+		// transition EN.5
 		branchHash = valueHash
 	}
 
@@ -107,11 +107,11 @@ func (en *ExtensionNode) descendAdd(mt *Trie, pathKey nibbles, remainingKey nibb
 		en.sharedKey = shNibbles
 		en.child = replacement
 		en.hash = nil
-        // transition EN.6
+		// transition EN.6
 		return en, nil
 	}
 	// or else there there is no shared key left, and the extension node is destroyed.
-    // transition EN.7
+	// transition EN.7
 	return replacement, nil
 }
 func (en *ExtensionNode) descendDelete(mt *Trie, pathKey nibbles, remainingKey nibbles) (node, bool, error) {
