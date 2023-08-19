@@ -44,6 +44,7 @@ func (ln *LeafNode) lambda(l func(node)) {
 func (ln *LeafNode) descendAdd(mt *Trie, pathKey nibbles, remainingKey nibbles, valueHash crypto.Digest) (node, error) {
 	if equalNibbles(ln.keyEnd, remainingKey) {
 		// The two keys are the same. Replace the value.
+        // transition LN.1
 		ln.valueHash = valueHash
 		ln.hash = nil
 		return ln, nil
@@ -61,6 +62,7 @@ func (ln *LeafNode) descendAdd(mt *Trie, pathKey nibbles, remainingKey nibbles, 
 
 	// If the existing leaf node has no more nibbles, then store it in the branch node's value slot.
 	if len(shiftedLn1) == 0 {
+        // transition LN.2
 		branchHash = ln.valueHash
 	} else {
 		// Otherwise, make a new leaf node that shifts away one nibble, and store it in that nibble's slot
@@ -68,6 +70,7 @@ func (ln *LeafNode) descendAdd(mt *Trie, pathKey nibbles, remainingKey nibbles, 
 		key1 := append(append(pathKey, shNibbles...), shiftedLn1[0])
 		ln1 := makeLeafNode(shiftNibbles(shiftedLn1, 1), ln.valueHash, key1)
 		mt.addNode(ln1)
+        // transition LN.3
 		children[shiftedLn1[0]] = ln1
 	}
 
@@ -77,6 +80,7 @@ func (ln *LeafNode) descendAdd(mt *Trie, pathKey nibbles, remainingKey nibbles, 
 			// They can't both be empty, otherwise they would have been caught earlier in the equalNibbles check.
 			return nil, fmt.Errorf("both keys are the same but somehow wasn't caught earlier")
 		}
+        // transition LN.4
 		branchHash = valueHash
 	} else {
 		// Otherwise, make a new leaf node that shifts away one nibble, and store it in that nibble's slot
@@ -86,6 +90,7 @@ func (ln *LeafNode) descendAdd(mt *Trie, pathKey nibbles, remainingKey nibbles, 
 		key2 = append(key2, shiftedLn2[0])
 		ln2 := makeLeafNode(shiftNibbles(shiftedLn2, 1), valueHash, key2)
 		mt.addNode(ln2)
+        // transition LN.5
 		children[shiftedLn2[0]] = ln2
 	}
 	bn2key := pathKey[:]
@@ -99,6 +104,7 @@ func (ln *LeafNode) descendAdd(mt *Trie, pathKey nibbles, remainingKey nibbles, 
 		enKey := pathKey[:]
 		en := makeExtensionNode(shNibbles, bn2, enKey)
 		mt.addNode(en)
+        // transition LN.6
 		return en, nil
 	}
 	if len(shNibbles) == 1 {
@@ -111,9 +117,12 @@ func (ln *LeafNode) descendAdd(mt *Trie, pathKey nibbles, remainingKey nibbles, 
 		bnKey := pathKey[:]
 		bn3 := makeBranchNode(children2, crypto.Digest{}, bnKey)
 		mt.addNode(bn3)
+        // transition LN.7
 		return bn3, nil
 	}
 	// There are no shared nibbles anymore, so just return the branch node.
+
+    // transition LN.8
 	return bn2, nil
 }
 func (ln *LeafNode) descendDelete(mt *Trie, pathKey nibbles, remainingKey nibbles) (node, bool, error) {
