@@ -71,7 +71,7 @@ func (mt *Trie) Add(key nibbles, value []byte) (err error) {
 	}
 
 	stats.cryptohashes++
-	replacement, err := mt.root.descendAdd(mt, []byte{0x01}, key, crypto.Hash(value))
+	replacement, err := mt.root.descendAdd(mt, nibbles{}, key, crypto.Hash(value))
 	if err != nil {
 		return err
 	}
@@ -94,7 +94,7 @@ func (mt *Trie) Delete(key nibbles) (bool, error) {
 		return false, nil
 	}
 
-	replacement, found, err := mt.root.descendDelete(mt, []byte{0x01}, key)
+	replacement, found, err := mt.root.descendDelete(mt, nibbles{}, key)
 	if err == nil && found {
 		mt.root = replacement
 	}
