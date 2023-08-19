@@ -21,8 +21,6 @@ import (
 	"fmt"
 	"github.com/algorand/go-algorand/crypto"
 	"github.com/cockroachdb/pebble"
-	"github.com/cockroachdb/pebble/vfs"
-	"os"
 	"runtime"
 	"unsafe"
 )
@@ -41,33 +39,9 @@ type Trie struct {
 }
 
 // MakeTrie creates a merkle trie
-func MakeTrie(inmem bool) (*Trie, error) {
-	var db *pebble.DB
-	var err error
-	if inmem {
-		//		fmt.Println("mem db")
-		db, err = pebble.Open("", &pebble.Options{FS: vfs.NewMem()})
-	} else {
-		dbdir := "/Users/bobbroderick/algorand/go-algorand/crypto/statetrie/pebbledb"
-
-		// delete the dbdir
-		if _, err := os.Stat(dbdir); err == nil {
-			os.RemoveAll(dbdir)
-		}
-
-		if _, err := os.Stat(dbdir); os.IsNotExist(err) {
-			os.Mkdir(dbdir, 0755)
-		}
-
-		//		fmt.Printf("disk db: %s\n", dbdir)
-		db, err = pebble.Open(dbdir, &pebble.Options{})
-	}
-	if err != nil {
-		return nil, err
-	}
+func MakeTrie(db *pebble.DB) (*Trie, error) {
 	mt := &Trie{db: db}
 	mt.dels = make(map[string]node)
-
 	return mt, nil
 }
 
@@ -84,23 +58,25 @@ func (mt *Trie) Add(key nibbles, value []byte) (err error) {
 	if len(key) > MaxKeyLength {
 		return errors.New("key too long")
 	}
-
-	if mt.root == nil {
-		stats.newrootnode++
-		mt.root = makeRootNode(nil)
-		mt.addNode(mt.root)
-	}
-
 	if debugTrie {
 		fmt.Printf("Add: %x : %v\n", key, crypto.Hash(value))
 	}
-	stats.cryptohashes++
-	_, err = mt.root.descendAdd(mt, []byte{0x01}, key, crypto.Hash(value))
 
+	if mt.root == nil {
+		stats.cryptohashes++
+		stats.newrootnode++
+		mt.root = makeLeafNode(key, crypto.Hash(value), nibbles{})
+		mt.addNode(mt.root)
+		return nil
+	}
+
+	stats.cryptohashes++
+	replacement, err := mt.root.descendAdd(mt, []byte{0x01}, key, crypto.Hash(value))
 	if err != nil {
 		return err
 	}
-
+	stats.newrootnode++
+	mt.root = replacement
 	return nil
 }
 
@@ -123,6 +99,12 @@ func (mt *Trie) Delete(key nibbles) (bool, error) {
 		mt.root = replacement
 	}
 	return found, err
+}
+
+func (mt *Trie) SetRoot(root crypto.Digest) {
+	rootdigest := new(crypto.Digest)
+	*rootdigest = root
+	mt.root = makeDBNode(rootdigest, nibbles{})
 }
 
 // Provide the root hash for this trie
@@ -198,19 +180,19 @@ func (mt *Trie) Commit() error {
 }
 
 func (mt *Trie) countNodes() string {
+	if mt.root == nil {
+		return "Empty trie"
+	}
 	var nc struct {
 		branches int
 		leaves   int
 		exts     int
 		dbnodes  int
-		roots    int
 	}
 
 	count := func() func(n node) {
 		innerCount := func(n node) {
 			switch n.(type) {
-			case *RootNode:
-				nc.roots++
 			case *BranchNode:
 				nc.branches++
 			case *LeafNode:
@@ -230,14 +212,11 @@ func (mt *Trie) countNodes() string {
 		leaves   int
 		exts     int
 		dbnodes  int
-		roots    int
 	}
 
 	mem := func() func(n node) {
 		innerCount := func(n node) {
 			switch n.(type) {
-			case *RootNode:
-				nmem.roots += int(unsafe.Sizeof(RootNode{}))
 			case *BranchNode:
 				nmem.branches += int(unsafe.Sizeof(BranchNode{}))
 			case *LeafNode:
@@ -252,11 +231,11 @@ func (mt *Trie) countNodes() string {
 	}()
 	mt.root.lambda(mem)
 
-	return fmt.Sprintf("[nodes: total %d (branches: %d, leaves: %d, exts: %d, dbnodes: %d, roots: %d), mem: total %d (branches: %d, leaves: %d, exts: %d, dbnodes: %d, roots: %d)]",
-		nc.branches+nc.leaves+nc.exts+nc.dbnodes+nc.roots,
-		nc.branches, nc.leaves, nc.exts, nc.dbnodes, nc.roots,
-		nmem.branches+nmem.leaves+nmem.exts+nmem.dbnodes+nmem.roots,
-		nmem.branches, nmem.leaves, nmem.exts, nmem.dbnodes, nmem.roots)
+	return fmt.Sprintf("[nodes: total %d (branches: %d, leaves: %d, exts: %d, dbnodes: %d), mem: total %d (branches: %d, leaves: %d, exts: %d, dbnodes: %d)]",
+		nc.branches+nc.leaves+nc.exts+nc.dbnodes,
+		nc.branches, nc.leaves, nc.exts, nc.dbnodes,
+		nmem.branches+nmem.leaves+nmem.exts+nmem.dbnodes,
+		nmem.branches, nmem.leaves, nmem.exts, nmem.dbnodes)
 
 }
 
@@ -331,10 +310,6 @@ func (mt *Trie) dotGraph(n node, path nibbles) string {
 	case *DBNode:
 		n2, _ := mt.getNode(tn)
 		return mt.dotGraph(n2, path)
-	case *RootNode:
-		return fmt.Sprintf("n%p [label=\"root\" shape=box];\n", tn) +
-			fmt.Sprintf("n%p -> n%p;\n", tn, tn.child) +
-			mt.dotGraph(tn.child, path)
 	case *LeafNode:
 		ln := tn
 		return fmt.Sprintf("n%p [label=\"leaf\\nkeyEnd:%x\\nvalueHash:%s\" shape=box];\n", tn, ln.keyEnd, ln.valueHash)

@@ -59,8 +59,6 @@ func deserializeNode(nbytes []byte, key nibbles) (node, error) {
 		return nil, fmt.Errorf("empty node")
 	}
 	switch nbytes[0] {
-	case 0:
-		return deserializeRootNode(nbytes)
 	case 1, 2:
 		return deserializeExtensionNode(nbytes, key)
 	case 3, 4:
