@@ -120,24 +120,20 @@ func (en *ExtensionNode) descendDelete(mt *Trie, pathKey nibbles, remainingKey n
 		return nil, false, fmt.Errorf("key too short")
 	}
 	shNibbles := sharedNibbles(remainingKey, en.sharedKey)
-	if len(shNibbles) == len(en.sharedKey) {
-		shifted := shiftNibbles(remainingKey, len(en.sharedKey))
-		replacementChild, found, err := en.child.descendDelete(mt, append(pathKey, shNibbles...), shifted)
-		if err != nil {
-			return nil, false, err
-		}
-		if found && replacementChild != nil {
-			// the key was found below this node and deleted,
-			// make a new extension node pointing to its replacement.
-			mt.addNode(replacementChild)
-			enKey := pathKey[:]
-			return makeExtensionNode(en.sharedKey, replacementChild, enKey), true, nil
-		}
-		// returns empty digest if there's nothing left.
-		return nil, found, err
+	if len(shNibbles) != len(en.sharedKey) {
+		return en, false, nil
 	}
-	// didn't match the entire extension node.
-	return nil, false, err
+
+	shifted := shiftNibbles(remainingKey, len(en.sharedKey))
+	enKey := pathKey[:]
+	enKey = append(enKey, shNibbles...)
+	replacementChild, found, err := en.child.descendDelete(mt, enKey, shifted)
+	if found && err == nil {
+		// the key was found below this node and deleted,
+		// make a new extension node pointing to its replacement.
+		en.child = replacementChild
+	}
+	return en, found, err
 }
 
 func (en *ExtensionNode) descendHashWithCommit(b *pebble.Batch) error {

@@ -74,23 +74,17 @@ func (bn *BranchNode) descendDelete(mt *Trie, pathKey nibbles, remainingKey nibb
 	if len(remainingKey) == 0 {
 		if (bn.valueHash == crypto.Digest{}) {
 			// valueHash is empty -- key not found.
-			return nil, false, nil
+			return bn, false, nil
 		}
 		// delete this branch's value hash. reset the value to the empty hash.
 		// update the branch node if there are children, or remove it completely.
-		for i := 0; i < 16; i++ {
-			if bn.children[i] != nil {
-				bnKey := pathKey[:]
-				return makeBranchNode(bn.children, crypto.Digest{}, bnKey), true, nil
-			}
-		}
-		// no children, so just return a nil node
-		return nil, true, nil
+		bn.valueHash = crypto.Digest{}
+		return bn, true, nil
 	}
 	// descend into the branch node.
 	if bn.children[remainingKey[0]] == nil {
 		// no child at this index.  key not found.
-		return nil, false, nil
+		return bn, false, nil
 	}
 	shifted := shiftNibbles(remainingKey, 1)
 	lnKey := pathKey[:]
@@ -98,11 +92,8 @@ func (bn *BranchNode) descendDelete(mt *Trie, pathKey nibbles, remainingKey nibb
 	replacementChild, found, err := bn.children[remainingKey[0]].descendDelete(mt, lnKey, shifted)
 	if found && err == nil {
 		bn.children[remainingKey[0]] = replacementChild
-		mt.addNode(replacementChild)
-		bnKey := pathKey[:]
-		return makeBranchNode(bn.children, bn.valueHash, bnKey), true, nil
 	}
-	return nil, false, err
+	return bn, found, err
 }
 func (bn *BranchNode) descendHashWithCommit(b *pebble.Batch) error {
 	if bn.hash == nil {
