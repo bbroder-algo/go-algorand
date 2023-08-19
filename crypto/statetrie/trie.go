@@ -22,9 +22,9 @@ import (
 	"github.com/algorand/go-algorand/crypto"
 	"github.com/cockroachdb/pebble"
 	"github.com/cockroachdb/pebble/vfs"
-	"math/rand"
 	"os"
 	"runtime"
+	"unsafe"
 )
 
 const (
@@ -41,20 +41,25 @@ type Trie struct {
 }
 
 // MakeTrie creates a merkle trie
-func MakeTrie() (*Trie, error) {
+func MakeTrie(inmem bool) (*Trie, error) {
 	var db *pebble.DB
 	var err error
-	if false {
-		fmt.Println("mem db")
+	if inmem {
+		//		fmt.Println("mem db")
 		db, err = pebble.Open("", &pebble.Options{FS: vfs.NewMem()})
 	} else {
-		dbdir := "/Users/bobbroderick/algorand/go-algorand/crypto/bobtrie2/pebbledb"
+		dbdir := "/Users/bobbroderick/algorand/go-algorand/crypto/statetrie/pebbledb"
+
+		// delete the dbdir
+		if _, err := os.Stat(dbdir); err == nil {
+			os.RemoveAll(dbdir)
+		}
+
 		if _, err := os.Stat(dbdir); os.IsNotExist(err) {
-			fmt.Printf("creating dbdir: %s\n", dbdir)
 			os.Mkdir(dbdir, 0755)
 		}
 
-		fmt.Printf("disk db: %s\n", dbdir)
+		//		fmt.Printf("disk db: %s\n", dbdir)
 		db, err = pebble.Open(dbdir, &pebble.Options{})
 	}
 	if err != nil {
@@ -64,6 +69,10 @@ func MakeTrie() (*Trie, error) {
 	mt.dels = make(map[string]node)
 
 	return mt, nil
+}
+
+func (mt *Trie) Close() error {
+	return mt.db.Close()
 }
 
 // Trie Add adds the given key/value pair to the trie.
@@ -82,9 +91,9 @@ func (mt *Trie) Add(key nibbles, value []byte) (err error) {
 		mt.addNode(mt.root)
 	}
 
-    if debugTrie {
-        fmt.Printf("Add: %x : %v\n", key, crypto.Hash(value))
-    }
+	if debugTrie {
+		fmt.Printf("Add: %x : %v\n", key, crypto.Hash(value))
+	}
 	stats.cryptohashes++
 	_, err = mt.root.descendAdd(mt, []byte{0x01}, key, crypto.Hash(value))
 
@@ -183,56 +192,73 @@ func (mt *Trie) Commit() error {
 
 	mt.dels = make(map[string]node)
 
-	shouldEvict := func(n node) bool {
-		if _, ok := n.(*BranchNode); ok {
-            bn := n.(*BranchNode)
-            for i := 0; i < 16; i++ {
-                if _, ok2 := bn.children[i].(*BranchNode); ok2 {
-                    return false
-                }
-            }
-            if rand.Intn(100) == 1 {
-                return true
-            }
-		}
-		return false
-	}
-	mt.root.evict(shouldEvict)
 	//	mt.root = makeDBNode(mt.root.getHash(), nibbles{})
 	//    mt.root = nil
 	return nil
 }
 
 func (mt *Trie) countNodes() string {
-    var nodecount struct {
-        branches int
-        leaves int
-        exts int
-        dbnodes int
-        roots int
-    }
+	var nc struct {
+		branches int
+		leaves   int
+		exts     int
+		dbnodes  int
+		roots    int
+	}
 
-    var nc nodecount
-    count := func (n node) {
-        innerCount := func (n node) {
-            switch n.(type) {
-            case *BranchNode:
-                nc.branches++
-            case *LeafNode:
-                nc.leaves++
-            case *ExtensionNode:
-                nc.exts++
-            case *DBNode:
-                nc.dbnodes++
-            }
-        }
-    }()
-    mt.root.lambda(count)
-    return fmt.Sprintf("branches: %d, leaves: %d, exts: %d, dbnodes: %d, roots: %d", nc.branches, nc.leaves, nc.exts, nc.dbnodes, nc.roots)
+	count := func() func(n node) {
+		innerCount := func(n node) {
+			switch n.(type) {
+			case *RootNode:
+				nc.roots++
+			case *BranchNode:
+				nc.branches++
+			case *LeafNode:
+				nc.leaves++
+			case *ExtensionNode:
+				nc.exts++
+			case *DBNode:
+				nc.dbnodes++
+			}
+		}
+		return innerCount
+	}()
+	mt.root.lambda(count)
+
+	var nmem struct {
+		branches int
+		leaves   int
+		exts     int
+		dbnodes  int
+		roots    int
+	}
+
+	mem := func() func(n node) {
+		innerCount := func(n node) {
+			switch n.(type) {
+			case *RootNode:
+				nmem.roots += int(unsafe.Sizeof(RootNode{}))
+			case *BranchNode:
+				nmem.branches += int(unsafe.Sizeof(BranchNode{}))
+			case *LeafNode:
+				nmem.leaves += int(unsafe.Sizeof(LeafNode{}))
+			case *ExtensionNode:
+				nmem.exts += int(unsafe.Sizeof(ExtensionNode{}))
+			case *DBNode:
+				nmem.dbnodes += int(unsafe.Sizeof(DBNode{}))
+			}
+		}
+		return innerCount
+	}()
+	mt.root.lambda(mem)
+
+	return fmt.Sprintf("[nodes: total %d (branches: %d, leaves: %d, exts: %d, dbnodes: %d, roots: %d), mem: total %d (branches: %d, leaves: %d, exts: %d, dbnodes: %d, roots: %d)]",
+		nc.branches+nc.leaves+nc.exts+nc.dbnodes+nc.roots,
+		nc.branches, nc.leaves, nc.exts, nc.dbnodes, nc.roots,
+		nmem.branches+nmem.leaves+nmem.exts+nmem.dbnodes+nmem.roots,
+		nmem.branches, nmem.leaves, nmem.exts, nmem.dbnodes, nmem.roots)
+
 }
-
-    
-        
 
 // Trie node get/set/delete operations
 func (mt *Trie) getNode(dbn dbnode) (node, error) {
@@ -258,7 +284,7 @@ func (mt *Trie) getNode(dbn dbnode) (node, error) {
 			panic(err)
 		}
 		if debugTrie {
-    		fmt.Printf("getNode %T (%x) : (%v)\n", trieNode, dbKey, trieNode)
+			fmt.Printf("getNode %T (%x) : (%v)\n", trieNode, dbKey, trieNode)
 		}
 		return trieNode, nil
 	}
@@ -270,7 +296,7 @@ func (mt *Trie) delNode(n node) {
 	if dbKey != nil {
 		// note this key for deletion on commit
 		if debugTrie {
-    		fmt.Printf("delNode %T (%x) : (%v)\n", n, dbKey, n)
+			fmt.Printf("delNode %T (%x) : (%v)\n", n, dbKey, n)
 		}
 		mt.dels[string(dbKey)] = n
 	}

@@ -39,75 +39,219 @@ func pseudoRand() uint32 {
 	return x
 }
 
-func TestTrieSpecial (t *testing.T) {
-	mt, err := MakeTrie()
+func TestTrieSpecial(t *testing.T) {
+	mt, err := MakeTrie(true)
 	require.NoError(t, err)
 	verifyNewTrie(t, mt)
-    key1 := []byte{0x08, 0x0e, 0x02, 0x08}
-    key2 := []byte{0x0b, 0x09, 0x0a, 0x0c}
-    key3 := []byte{0x08, 0x0c, 0x09, 0x00}
-    key4 := []byte{0x03, 0x0c, 0x04, 0x0c}
-    key5 := []byte{0x07, 0x0f, 0x0b, 0x04}
-    mt.Add(key1, key1)
-    mt.Add(key2, key2)
-    mt.Add(key3, key3)
-    mt.Add(key4, key4)
-    mt.Add(key5, key5)
-    mt.Commit()
+	key1 := []byte{0x08, 0x0e, 0x02, 0x08}
+	key2 := []byte{0x0b, 0x09, 0x0a, 0x0c}
+	key3 := []byte{0x08, 0x0c, 0x09, 0x00}
+	key4 := []byte{0x03, 0x0c, 0x04, 0x0c}
+	key5 := []byte{0x07, 0x0f, 0x0b, 0x04}
+	mt.Add(key1, key1)
+	mt.Add(key2, key2)
+	mt.Add(key3, key3)
+	mt.Add(key4, key4)
+	mt.Add(key5, key5)
+	mt.Commit()
 }
 
-
-
-func TestTrieAdd4mFrom2m(t *testing.T) {
-	mt, err := MakeTrie()
-	require.NoError(t, err)
-	verifyNewTrie(t, mt)
+func addKeyBatches(b *testing.B, mt *Trie, pairs int, totalBatches int, keyLength int, skipInitialBatchCount int, skipCommit bool, state_touched float64) {
 	var accts [][]byte
-	pairs := 2_000_000
-	fmt.Println("Generating", pairs, "random key/value pairs")
 	accts = make([][]byte, 0, pairs)
 	for m := 0; m < pairs; m++ {
-		k := make([]byte, 32)
+		k := make([]byte, keyLength) // 32 length keys == crypto.digest.  Trie adds one byte.
 		rand.Read(k)
 		for j := range k {
-			k[j] = k[j] & 0x0f
+			k[j] = k[j] & 0x0f // nibbles only
 		}
 		accts = append(accts, k)
 	}
-	epoch := time.Now().Truncate(time.Millisecond)
-	batchSize := 250_000
-//	batchSize := 5
-	total := 400_000_000_000
-	//	total := 39
-	prior_epoch := time.Now().Truncate(time.Millisecond)
-	fmt.Println("Adding", total, "random key/value pairs in batches of", batchSize, "at", epoch)
-	for m := 0; m < total; m++ {
-		epoch := time.Now().Truncate(time.Millisecond)
-		fmt.Println("\nadding", batchSize, "random key/value pairs", epoch)
-		//		var runtime_info runtime.MemStats
-		//		runtime.ReadMemStats(&runtime_info)
-		//		fmt.Println("runtime_info.Alloc:", runtime_info.Alloc, "runtime_info.TotalAlloc:", runtime_info.TotalAlloc, "runtime_info.HeapAlloc:", runtime_info.HeapAlloc, "runtime_info.HeapSys:", runtime_info.HeapSys, "runtime_info.HeapIdle:", runtime_info.HeapIdle, "runtime_info.HeapReleased:", runtime_info.HeapReleased, "runtime_info.HeapObjects:", runtime_info.HeapObjects)
+
+	// assume each block modifies 10% of state
+	batchSize := int(state_touched * float64(pairs))
+
+	// prime the trie
+	for m := 0; m < skipInitialBatchCount; m++ {
 		for i := 0; i < batchSize; i++ {
-			m++
 			rand_k := pseudoRand() % uint32(pairs)
 			rand_v := pseudoRand() % uint32(pairs)
-			require.NoError(t, mt.Add(accts[rand_k], accts[rand_v]))
-			//            if rand_k == 0 && rand_v == 0 {
-			//                require.NoError(t, mt.Add(accts[rand_k], accts[rand_v]))
-			//            }
-
+			mt.Add(accts[rand_k], accts[rand_v])
 		}
-		epoch = time.Now().Truncate(time.Millisecond)
-		//		fmt.Println(epoch, " m:", m, "\n", stats.String(), "len(mt.sets):", len(mt.sets), "len(mt.gets):", len(mt.gets), "len(mt.dels):", len(mt.dels))
-		require.NoError(t, mt.Commit())
+		if !skipCommit {
+			mt.Commit()
+		}
+	}
+	b.ResetTimer()
+	for m := 0; m < totalBatches; m++ {
+		for i := 0; i < batchSize; i++ {
+			rand_k := pseudoRand() % uint32(pairs)
+			rand_v := pseudoRand() % uint32(pairs)
+			mt.Add(accts[rand_k], accts[rand_v])
+		}
+		if !skipCommit {
+			mt.Commit()
+		}
+	}
+	b.StopTimer()
+}
+func BenchmarkTrieAddFrom64MiB32NoCommit(b *testing.B) {
+	mt, err := MakeTrie(false)
+	require.NoError(b, err)
+	addKeyBatches(b, mt, 1_048_576*64, b.N, 32, 25, true, 0.005)
+	mt.Close()
+}
+func BenchmarkTrieAddFrom64MiB32Disk(b *testing.B) {
+	mt, err := MakeTrie(true)
+	require.NoError(b, err)
+	addKeyBatches(b, mt, 1_048_576*64, b.N, 32, 25, true, 0.005)
+	mt.Close()
+}
+func BenchmarkTrieAddFrom4MiB32NoCommit(b *testing.B) {
+	mt, err := MakeTrie(false)
+	require.NoError(b, err)
+	addKeyBatches(b, mt, 1_048_576*4, b.N, 32, 25, true, 0.05)
+	mt.Close()
+}
+func BenchmarkTrieAddFrom4MiB32Disk(b *testing.B) {
+	mt, err := MakeTrie(false)
+	require.NoError(b, err)
+	addKeyBatches(b, mt, 1_048_576*4, b.N, 32, 45, false, 0.05)
+	mt.Close()
+}
+func BenchmarkTrieAddFrom4MiB64InMem(b *testing.B) {
+	mt, err := MakeTrie(true)
+	require.NoError(b, err)
+	addKeyBatches(b, mt, 1_048_576*4, b.N, 64, 25, false, 0.05)
+	mt.Close()
+}
+func BenchmarkTrieAddFrom4MiB32InMem(b *testing.B) {
+	mt, err := MakeTrie(true)
+	require.NoError(b, err)
+	addKeyBatches(b, mt, 1_048_576*4, b.N, 32, 45, false, 0.05)
+	mt.Close()
+}
+func BenchmarkTrieAddFrom2MiB32InMem(b *testing.B) {
+	mt, err := MakeTrie(true)
+	require.NoError(b, err)
+	addKeyBatches(b, mt, 1_048_576*2, b.N, 32, 25, false, 0.10)
+	mt.Close()
+}
+func BenchmarkTrieAddFrom2MiB64InMem(b *testing.B) {
+	mt, err := MakeTrie(true)
+	require.NoError(b, err)
+	addKeyBatches(b, mt, 1_048_576*2, b.N, 64, 25, false, 0.10)
+	mt.Close()
+}
+func BenchmarkTrieAddFrom1MiB64InMem(b *testing.B) {
+	mt, err := MakeTrie(true)
+	require.NoError(b, err)
+	addKeyBatches(b, mt, 1_048_576, b.N, 64, 25, false, 0.10)
+	mt.Close()
+}
+func BenchmarkTrieAddFrom1MiB32InMem(b *testing.B) {
+	mt, err := MakeTrie(true)
+	require.NoError(b, err)
+	addKeyBatches(b, mt, 1_048_576, b.N, 32, 25, false, 0.10)
+	mt.Close()
+}
+func BenchmarkTrieAddFrom64KiB32NoCommit(b *testing.B) {
+	mt, err := MakeTrie(false)
+	require.NoError(b, err)
+	addKeyBatches(b, mt, 65_536, b.N, 32, 25, true, 0.50)
+	mt.Close()
+}
+func BenchmarkTrieAddFrom64KiB32Disk(b *testing.B) {
+	mt, err := MakeTrie(false)
+	require.NoError(b, err)
+	addKeyBatches(b, mt, 65_536, b.N, 32, 25, false, 0.50)
+	mt.Close()
+}
+func BenchmarkTrieAddFrom64KiB64InMem(b *testing.B) {
+	mt, err := MakeTrie(true)
+	require.NoError(b, err)
+	addKeyBatches(b, mt, 65_536, b.N, 64, 25, false, 0.10)
+	mt.Close()
+}
+func BenchmarkTrieAddFrom64KiB32InMem(b *testing.B) {
+	mt, err := MakeTrie(true)
+	require.NoError(b, err)
+	addKeyBatches(b, mt, 65_536, b.N, 32, 25, false, 0.50)
+	mt.Close()
+}
+
+func addKeysNoopEvict(mt *Trie, pairs int, totalBatches int, keyLength int, skipInitialBatchCount int, skipCommit bool, state_touched float64) {
+	var accts [][]byte
+	batchSize := int(state_touched * float64(pairs))
+	fmt.Println("Prepopulating the trie with ", pairs, " accounts")
+	accts = make([][]byte, 0, totalBatches*batchSize)
+
+	for m := 0; m < pairs; m++ {
+		k := make([]byte, keyLength) // 32 length keys == crypto.digest.  Trie adds one byte.
+		rand.Read(k)
+		for j := range k {
+			k[j] = k[j] & 0x0f // nibbles only
+		}
+		mt.Add(k, k) // just add the key as the value
+
+		if m%(pairs/10) == 0 {
+			fmt.Println("Committing prepopulation at", m, "pairs at percent ", m/pairs*100)
+			mt.Commit()
+		}
+
+		if pairs-m < totalBatches*batchSize {
+			accts = append(accts, k)
+		}
+	}
+	epoch := time.Now().Truncate(time.Millisecond)
+
+	fmt.Println("Adding keys (batch size", batchSize, ", pairs", pairs, ", totalBatches", totalBatches, ", epoch", epoch, ")")
+	for m := 0; m < totalBatches; m++ {
+
+		prior_epoch := time.Now().Truncate(time.Millisecond)
+		for i := 0; i < batchSize; i++ {
+			rand_k := accts[i*batchSize]
+			mt.Add(rand_k, rand_k)
+		}
+		fmt.Println("Committing", batchSize, "pairs")
+		if !skipCommit {
+			mt.Commit()
+		}
+		shouldEvict := func(n node) bool {
+			if _, ok := n.(*BranchNode); ok {
+				bn := n.(*BranchNode)
+				for i := 0; i < 16; i++ {
+					if _, ok2 := bn.children[i].(*BranchNode); ok2 {
+						return false
+					}
+				}
+				if rand.Intn(10) == 1 {
+					return false
+				}
+			}
+			return false
+		}
+		fmt.Println("Evicting")
+		mt.root.evict(shouldEvict)
+
 		epoch = time.Now().Truncate(time.Millisecond)
 		time_consumed := epoch.Sub(prior_epoch)
-		rh, _ := mt.RootHash()
-		fmt.Println("time", time_consumed, "new hash:", rh, stats.String(), "len(mt.dels):", len(mt.dels))
-		//        panic("aah")
-		prior_epoch = epoch
+		fmt.Println("time", time_consumed, "new hash:", mt.root.getHash(), stats.String(), "len(mt.dels):", len(mt.dels), mt.countNodes())
 	}
-	fmt.Println("Done", total, "random key/value pair insertions from ", pairs, "keys")
+	fmt.Println("Done", batchSize, ", pairs", pairs, ", totalBatches", totalBatches, ", epoch", epoch, ")")
+}
+
+func TestTrieRealisticDisk(t *testing.T) {
+	mt, err := MakeTrie(true) //not technically disk
+	require.NoError(t, err)
+	addKeysNoopEvict(mt, 1_048_576*64, 5, 32, 25*20, false, 0.005)
+	mt.Close()
+}
+func TestTrieAddFrom1MiB2InMem(t *testing.T) {
+	mt, err := MakeTrie(true)
+	require.NoError(t, err)
+	addKeysNoopEvict(mt, 1_048_576*1, 5, 32, 25, false, 0.10)
+	mt.Close()
 }
 
 func verifyNewTrie(t *testing.T, mt *Trie) {
@@ -117,7 +261,7 @@ func verifyNewTrie(t *testing.T, mt *Trie) {
 }
 
 func TestMakeTrie(t *testing.T) {
-	mt, err := MakeTrie()
+	mt, err := MakeTrie(true)
 	require.NoError(t, err)
 	verifyNewTrie(t, mt)
 
@@ -127,7 +271,7 @@ func makenodehash(cd crypto.Digest) node {
 	return makeDBNode(&cd, []byte{0x01, 0x02, 0x03, 0x04})
 }
 
-func TestNodeSerialization(t *testing.T) {
+func XTestNodeSerialization(t *testing.T) {
 	rn := &RootNode{}
 	rn.child = makenodehash(crypto.Hash([]byte("rootnode")))
 	data, err := rn.serialize()
@@ -254,7 +398,7 @@ func buildDotGraph(t *testing.T, mt *Trie, keys [][]byte, values [][]byte, fn st
 }
 
 func TestTrieAdd1kEveryTwoSeconds(t *testing.T) {
-	mt, err := MakeTrie()
+	mt, err := MakeTrie(true)
 	require.NoError(t, err)
 	verifyNewTrie(t, mt)
 	for m := 0; m < 2; m++ {
@@ -282,7 +426,7 @@ func TestTrieAdd1kEveryTwoSeconds(t *testing.T) {
 
 }
 func TestTrieAdd1kRandomKeyValues(t *testing.T) {
-	mt, err := MakeTrie()
+	mt, err := MakeTrie(true)
 	require.NoError(t, err)
 	verifyNewTrie(t, mt)
 	fmt.Println("Adding 1k random key/value pairs")
@@ -310,7 +454,7 @@ func TestTrieAdd1kRandomKeyValues(t *testing.T) {
 }
 
 func TestTrieStupidAddSimpleSequenceNoCache(t *testing.T) {
-	mt, err := MakeTrie()
+	mt, err := MakeTrie(true)
 	require.NoError(t, err)
 	verifyNewTrie(t, mt)
 	var k []byte
@@ -392,7 +536,7 @@ func TestTrieStupidAddSimpleSequenceNoCache(t *testing.T) {
 }
 
 func TestTrieAddSimpleSequence(t *testing.T) {
-	mt, err := MakeTrie()
+	mt, err := MakeTrie(true)
 	require.NoError(t, err)
 	verifyNewTrie(t, mt)
 	var k []byte

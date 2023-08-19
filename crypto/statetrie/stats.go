@@ -35,7 +35,7 @@ type triestats struct {
 	addnode        int
 	delnode        int
 	getnode        int
-    evictions      int
+	evictions      int
 }
 
 var stats triestats

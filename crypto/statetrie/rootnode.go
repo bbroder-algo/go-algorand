@@ -37,7 +37,7 @@ func (rn *RootNode) descendAdd(mt *Trie, pathKey nibbles, remainingKey nibbles, 
 	var err error
 	if rn.child == nil {
 		// Root node with a blank crypto digest in the child.  Make a leaf node.
-        chKey := pathKey[:]
+		chKey := pathKey[:]
 		rn.child = makeLeafNode(remainingKey, valueHash, chKey)
 		mt.addNode(rn.child)
 		stats.newrootnode++
@@ -107,15 +107,15 @@ func deserializeRootNode(data []byte) (*RootNode, error) {
 	return makeRootNode(child), nil
 }
 func (rn *RootNode) evict(eviction func(node) bool) {
-    if rn.child != nil {
-        rn.child.evict(eviction)
-    }
+	if rn.child != nil {
+		rn.child.evict(eviction)
+	}
 }
-func (rn *RootNode) lambda(l func (node)) {
-    l(rn)
-    if rn.child != nil {
-        rn.child.lambda(l)
-    }
+func (rn *RootNode) lambda(l func(node)) {
+	l(rn)
+	if rn.child != nil {
+		rn.child.lambda(l)
+	}
 }
 
 func (rn *RootNode) serialize() ([]byte, error) {

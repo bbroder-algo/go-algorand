@@ -29,14 +29,14 @@ type DBNode struct {
 
 func makeDBNode(hash *crypto.Digest, key nibbles) *DBNode {
 	stats.makedbnodes++
-//	dbn := &DBNode{hash: hash, key: key}
+	//	dbn := &DBNode{hash: hash, key: key}
 	dbn := &DBNode{hash: hash, key: make(nibbles, len(key))}
-    copy(dbn.key, key)
+	copy(dbn.key, key)
 	return dbn
 }
 
-func (dbn *DBNode) lambda(l func (node)) {
-    l(dbn)
+func (dbn *DBNode) lambda(l func(node)) {
+	l(dbn)
 }
 
 func (dbn *DBNode) descendAdd(mt *Trie, pathKey nibbles, remainingKey nibbles, valueHash crypto.Digest) (node, error) {

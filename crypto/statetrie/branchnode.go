@@ -34,8 +34,8 @@ type BranchNode struct {
 func makeBranchNode(children [16]node, valueHash crypto.Digest, key nibbles) *BranchNode {
 	stats.makebranches++
 	bn := &BranchNode{children: children, valueHash: valueHash, key: make(nibbles, len(key))}
-    copy(bn.key, key)
-//	bn := &BranchNode{children: children, valueHash: valueHash, key: key}
+	copy(bn.key, key)
+	//	bn := &BranchNode{children: children, valueHash: valueHash, key: key}
 	return bn
 }
 func (bn *BranchNode) descendAdd(mt *Trie, pathKey nibbles, remainingKey nibbles, valueHash crypto.Digest) (node, error) {
@@ -48,11 +48,11 @@ func (bn *BranchNode) descendAdd(mt *Trie, pathKey nibbles, remainingKey nibbles
 
 	// Otherwise, shift out the first nibble and check the children for it.
 	shifted := shiftNibbles(remainingKey, 1)
-    slot := remainingKey[0]
+	slot := remainingKey[0]
 	if bn.children[slot] == nil {
 		// nil children are available.
-        lnKey := pathKey[:]
-        lnKey = append (lnKey, slot)
+		lnKey := pathKey[:]
+		lnKey = append(lnKey, slot)
 
 		bn.children[slot] = makeLeafNode(shifted, valueHash, lnKey)
 		mt.addNode(bn.children[slot])
@@ -78,7 +78,7 @@ func (bn *BranchNode) descendDelete(mt *Trie, pathKey nibbles, remainingKey nibb
 		// update the branch node if there are children, or remove it completely.
 		for i := 0; i < 16; i++ {
 			if bn.children[i] != nil {
-                bnKey := pathKey[:]
+				bnKey := pathKey[:]
 				return makeBranchNode(bn.children, crypto.Digest{}, bnKey), true, nil
 			}
 		}
@@ -91,13 +91,13 @@ func (bn *BranchNode) descendDelete(mt *Trie, pathKey nibbles, remainingKey nibb
 		return nil, false, nil
 	}
 	shifted := shiftNibbles(remainingKey, 1)
-    lnKey := pathKey[:]
-    lnKey = append (lnKey, remainingKey[0])
+	lnKey := pathKey[:]
+	lnKey = append(lnKey, remainingKey[0])
 	replacementChild, found, err := bn.children[remainingKey[0]].descendDelete(mt, lnKey, shifted)
 	if found && err == nil {
 		bn.children[remainingKey[0]] = replacementChild
 		mt.addNode(replacementChild)
-        bnKey := pathKey[:]
+		bnKey := pathKey[:]
 		return makeBranchNode(bn.children, bn.valueHash, bnKey), true, nil
 	}
 	return nil, false, err
@@ -146,8 +146,8 @@ func deserializeBranchNode(data []byte, key nibbles) (*BranchNode, error) {
 		hash := new(crypto.Digest)
 		copy(hash[:], data[1+i*32:33+i*32])
 		if *hash != (crypto.Digest{}) {
-            chKey := key[:]
-            chKey = append (chKey, byte(i))
+			chKey := key[:]
+			chKey = append(chKey, byte(i))
 			children[i] = makeDBNode(hash, chKey)
 		}
 	}
@@ -168,13 +168,13 @@ func (bn *BranchNode) serialize() ([]byte, error) {
 }
 func (bn *BranchNode) evict(eviction func(node) bool) {
 	if eviction(bn) {
-        if debugTrie {
-            fmt.Printf("evicting branch node %x, (%v)\n", bn.getKey(), bn)
-        }
+		if debugTrie {
+			fmt.Printf("evicting branch node %x, (%v)\n", bn.getKey(), bn)
+		}
 		for i := 0; i < 16; i++ {
 			if bn.children[i] != nil && bn.children[i].getHash() != nil {
 				bn.children[i] = makeDBNode(bn.children[i].getHash(), bn.children[i].getKey())
-                stats.evictions++
+				stats.evictions++
 			}
 		}
 	} else {
@@ -186,12 +186,12 @@ func (bn *BranchNode) evict(eviction func(node) bool) {
 	}
 }
 func (bn *BranchNode) lambda(l func(node)) {
-    l(bn)
-    for i := 0; i < 16; i++ {
-        if bn.children[i] != nil {
-            bn.children[i].lambda(l)
-        }
-    }
+	l(bn)
+	for i := 0; i < 16; i++ {
+		if bn.children[i] != nil {
+			bn.children[i].lambda(l)
+		}
+	}
 }
 
 func (bn *BranchNode) getKey() nibbles {
