@@ -73,26 +73,24 @@ func TestTrieSpecial(t *testing.T) {
 	mt.Commit()
 }
 
-func addKeyBatches(b *testing.B, mt *Trie, accounts int, totalBatches int, keyLength int, prepopulateCount int, skipCommit bool, state_touched float64) {
-	var accts [][]byte
-	accts = make([][]byte, 0, accounts)
-	for m := 0; m < accounts; m++ {
-		k := make([]byte, keyLength) // 32 length keys == crypto.digest.  Trie adds one byte.
+var accts [][]byte
+
+func addKeyBatches(b *testing.B, mt *Trie, accounts int, totalBatches int, keyLength int, prepopulateCount int, skipCommit bool, batchSize int) {
+	if prepopulateCount > accounts {
+		panic("prepopulateCount > accounts")
+	}
+
+	for m := len(accts); m < accounts; m++ {
+		k := make([]byte, keyLength)
 		rand.Read(k)
 		for j := range k {
 			k[j] = k[j] & 0x0f // nibbles only
 		}
 		accts = append(accts, k)
 	}
-
-	// assume each block modifies 10% of state
-	batchSize := int(state_touched * float64(accounts))
-
 	// prepopulate the trie
 	for m := 0; m < prepopulateCount; m++ {
-		rand_k := pseudoRand() % uint32(accounts)
-		rand_v := pseudoRand() % uint32(accounts)
-		mt.Add(accts[rand_k], accts[rand_v])
+		mt.Add(accts[m], accts[m])
 		if m%(prepopulateCount/10) == 0 {
 			mt.Commit()
 		}
@@ -101,8 +99,8 @@ func addKeyBatches(b *testing.B, mt *Trie, accounts int, totalBatches int, keyLe
 	b.ResetTimer()
 	for m := 0; m < totalBatches; m++ {
 		for i := 0; i < batchSize; i++ {
-			rand_k := pseudoRand() % uint32(accounts)
-			rand_v := pseudoRand() % uint32(accounts)
+			rand_k := pseudoRand() % uint32(len(accts))
+			rand_v := pseudoRand() % uint32(len(accts))
 			mt.Add(accts[rand_k], accts[rand_v])
 		}
 		if !skipCommit {
@@ -115,112 +113,112 @@ func BenchmarkTrieAddFrom32MiB32NoCommit(b *testing.B) {
 	db, err := MakeDBInMem()
 	mt, err := MakeTrie(db)
 	require.NoError(b, err)
-	addKeyBatches(b, mt, 1_048_576*32, b.N, 32, 64*1_048_576, true, 0.0125)
+	addKeyBatches(b, mt, 1_048_576*32, b.N, 32, 32*1_048_576, true, 250_000)
 	mt.Close()
 }
 func BenchmarkTrieAddFrom16MiB32NoCommit(b *testing.B) {
 	db, err := MakeDBInMem()
 	mt, err := MakeTrie(db)
 	require.NoError(b, err)
-	addKeyBatches(b, mt, 1_048_576*16, b.N, 32, 32*1_048_576, true, 0.025)
+	addKeyBatches(b, mt, 1_048_576*16, b.N, 32, 16*1_048_576, true, 250_000)
 	mt.Close()
 }
 func BenchmarkTrieAddFrom16MiB32Disk(b *testing.B) {
 	db, err := MakeDBDisk(true, "pebble2db")
 	mt, err := MakeTrie(db)
 	require.NoError(b, err)
-	addKeyBatches(b, mt, 1_048_576*16, b.N, 32, 32*1_048_576, false, 0.025)
+	addKeyBatches(b, mt, 1_048_576*16, b.N, 32, 16*1_048_576, false, 250_000)
 	mt.Close()
 }
 func BenchmarkTrieAddFrom8MiB32NoCommit(b *testing.B) {
 	db, err := MakeDBInMem()
 	mt, err := MakeTrie(db)
 	require.NoError(b, err)
-	addKeyBatches(b, mt, 1_048_576*8, b.N, 32, 16*1_048_576, true, 0.05)
+	addKeyBatches(b, mt, 1_048_576*8, b.N, 32, 8*1_048_576, true, 250_000)
 	mt.Close()
 }
 func BenchmarkTrieAddFrom8MiB32Disk(b *testing.B) {
 	db, err := MakeDBDisk(true, "pebble2db")
 	mt, err := MakeTrie(db)
 	require.NoError(b, err)
-	addKeyBatches(b, mt, 1_048_576*8, b.N, 32, 16*1_048_576, false, 0.05)
+	addKeyBatches(b, mt, 1_048_576*8, b.N, 32, 8*1_048_576, false, 250_000)
 	mt.Close()
 }
 func BenchmarkTrieAddFrom4MiB32NoCommit(b *testing.B) {
 	db, err := MakeDBInMem()
 	mt, err := MakeTrie(db)
 	require.NoError(b, err)
-	addKeyBatches(b, mt, 1_048_576*4, b.N, 32, 8*1_048_576, true, 0.05)
+	addKeyBatches(b, mt, 1_048_576*4, b.N, 32, 4*1_048_576, true, 250_000)
 	mt.Close()
 }
 func BenchmarkTrieAddFrom4MiB32Disk(b *testing.B) {
 	db, err := MakeDBDisk(true, "pebble2db")
 	mt, err := MakeTrie(db)
 	require.NoError(b, err)
-	addKeyBatches(b, mt, 1_048_576*4, b.N, 32, 8*1_048_576, false, 0.05)
+	addKeyBatches(b, mt, 1_048_576*4, b.N, 32, 4*1_048_576, false, 250_000)
 	mt.Close()
 }
-func BenchmarkTrieAddFrom4MiB32(b *testing.B) {
+func BenchmarkTrieAddFrom2MiB32NoCommit(b *testing.B) {
 	db, err := MakeDBInMem()
 	mt, err := MakeTrie(db)
 	require.NoError(b, err)
-	addKeyBatches(b, mt, 1_048_576*4, b.N, 32, 8*1_048_576, false, 0.05)
+	addKeyBatches(b, mt, 1_048_576*2, b.N, 32, 2*1_048_576, true, 250_000)
 	mt.Close()
 }
-func BenchmarkTrieAddFrom2MiB32(b *testing.B) {
+func BenchmarkTrieAddFrom2MiB32InMem(b *testing.B) {
 	db, err := MakeDBInMem()
 	mt, err := MakeTrie(db)
 	require.NoError(b, err)
-	addKeyBatches(b, mt, 1_048_576*2, b.N, 32, 4*1_048_576, false, 0.10)
+	addKeyBatches(b, mt, 1_048_576*2, b.N, 32, 2*1_048_576, false, 250_000)
 	mt.Close()
 }
-func BenchmarkTrieAddFrom1MiB32(b *testing.B) {
+func BenchmarkTrieAddFrom1MiB32InMem(b *testing.B) {
 	db, err := MakeDBInMem()
 	mt, err := MakeTrie(db)
 	require.NoError(b, err)
-	addKeyBatches(b, mt, 1_048_576, b.N, 32, 2*1_048_576, false, 0.10)
+	addKeyBatches(b, mt, 1_048_576, b.N, 32, 1*1_048_576, false, 250_000)
 	mt.Close()
 }
 func BenchmarkTrieAddFrom64KiB32NoCommit(b *testing.B) {
 	db, err := MakeDBInMem()
 	mt, err := MakeTrie(db)
 	require.NoError(b, err)
-	addKeyBatches(b, mt, 65_536, b.N, 32, 2*65_536, true, 0.50)
+	addKeyBatches(b, mt, 65_536, b.N, 32, 1*65_536, true, 25_000)
 	mt.Close()
 }
 func BenchmarkTrieAddFrom64KiB32Disk(b *testing.B) {
 	db, err := MakeDBDisk(true, "pebble2db")
 	mt, err := MakeTrie(db)
 	require.NoError(b, err)
-	addKeyBatches(b, mt, 65_536, b.N, 32, 2*65_536, false, 0.50)
+	addKeyBatches(b, mt, 65_536, b.N, 32, 1*65_536, false, 25_000)
 	mt.Close()
 }
 func BenchmarkTrieAddFrom64KiB64(b *testing.B) {
 	db, err := MakeDBInMem()
 	mt, err := MakeTrie(db)
 	require.NoError(b, err)
-	addKeyBatches(b, mt, 65_536, b.N, 64, 2*65_536, false, 0.10)
+	addKeyBatches(b, mt, 65_536, b.N, 64, 1*65_536, false, 25_000)
 	mt.Close()
 }
 func BenchmarkTrieAddFrom64KiB32(b *testing.B) {
 	db, err := MakeDBInMem()
 	mt, err := MakeTrie(db)
 	require.NoError(b, err)
-	addKeyBatches(b, mt, 65_536, b.N, 32, 2*65_536, false, 0.50)
+	addKeyBatches(b, mt, 65_536, b.N, 32, 1*65_536, false, 25_000)
 	mt.Close()
 }
 func BenchmarkTrieAddFrom64MiB32NoCommit(b *testing.B) {
 	db, err := MakeDBInMem()
 	mt, err := MakeTrie(db)
 	require.NoError(b, err)
-	addKeyBatches(b, mt, 1_048_576*64, b.N, 32, 64*1_048_576, true, 0.005)
+	addKeyBatches(b, mt, 1_048_576*64, b.N, 32, 64*1_048_576, true, 250_000)
 	mt.Close()
 }
 func skipBenchmarkTrieAddFrom64MiB32Disk(b *testing.B) {
 	db, err := MakeDBDisk(true, "pebble2db")
 	mt, err := MakeTrie(db)
 	require.NoError(b, err)
-	addKeyBatches(b, mt, 1_048_576*64, b.N, 32, 64*1_048_576, false, 0.005)
+	addKeyBatches(b, mt, 1_048_576*64, b.N, 32, 64*1_048_576, false, 250_000)
 	mt.Close()
 }
 
