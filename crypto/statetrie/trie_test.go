@@ -73,10 +73,10 @@ func TestTrieSpecial(t *testing.T) {
 	mt.Commit()
 }
 
-func addKeyBatches(b *testing.B, mt *Trie, pairs int, totalBatches int, keyLength int, prepopulateCount int, skipCommit bool, state_touched float64) {
+func addKeyBatches(b *testing.B, mt *Trie, accounts int, totalBatches int, keyLength int, prepopulateCount int, skipCommit bool, state_touched float64) {
 	var accts [][]byte
-	accts = make([][]byte, 0, pairs)
-	for m := 0; m < pairs; m++ {
+	accts = make([][]byte, 0, accounts)
+	for m := 0; m < accounts; m++ {
 		k := make([]byte, keyLength) // 32 length keys == crypto.digest.  Trie adds one byte.
 		rand.Read(k)
 		for j := range k {
@@ -86,12 +86,12 @@ func addKeyBatches(b *testing.B, mt *Trie, pairs int, totalBatches int, keyLengt
 	}
 
 	// assume each block modifies 10% of state
-	batchSize := int(state_touched * float64(pairs))
+	batchSize := int(state_touched * float64(accounts))
 
 	// prepopulate the trie
 	for m := 0; m < prepopulateCount; m++ {
-		rand_k := pseudoRand() % uint32(pairs)
-		rand_v := pseudoRand() % uint32(pairs)
+		rand_k := pseudoRand() % uint32(accounts)
+		rand_v := pseudoRand() % uint32(accounts)
 		mt.Add(accts[rand_k], accts[rand_v])
 		if m%(prepopulateCount/10) == 0 {
 			mt.Commit()
@@ -101,8 +101,8 @@ func addKeyBatches(b *testing.B, mt *Trie, pairs int, totalBatches int, keyLengt
 	b.ResetTimer()
 	for m := 0; m < totalBatches; m++ {
 		for i := 0; i < batchSize; i++ {
-			rand_k := pseudoRand() % uint32(pairs)
-			rand_v := pseudoRand() % uint32(pairs)
+			rand_k := pseudoRand() % uint32(accounts)
+			rand_v := pseudoRand() % uint32(accounts)
 			mt.Add(accts[rand_k], accts[rand_v])
 		}
 		if !skipCommit {
@@ -224,14 +224,14 @@ func skipBenchmarkTrieAddFrom64MiB32Disk(b *testing.B) {
 	mt.Close()
 }
 
-func addKeysNoopEvict(mt *Trie, pairs int, totalBatches int, keyLength int, prepopulatePct float64, skipCommit bool, state_touched float64) {
+func addKeysNoopEvict(mt *Trie, accounts int, totalBatches int, keyLength int, prepopulatePct float64, skipCommit bool, state_touched float64) {
 	var accts [][]byte
-	batchSize := int(state_touched * float64(pairs))
-	prepopulateCount := int(float64(pairs) * prepopulatePct)
+	batchSize := int(state_touched * float64(accounts))
+	prepopulateCount := int(float64(accounts) * prepopulatePct)
 	fmt.Println("Prepopulating the trie with ", prepopulateCount, " accounts")
 	fmt.Println(mt.countNodes())
 
-	acctsNeededForBatch := int(math.Min(float64(pairs), math.Min(float64(batchSize*totalBatches), float64(pairs))))
+	acctsNeededForBatch := int(math.Min(float64(accounts), math.Min(float64(batchSize*totalBatches), float64(accounts))))
 
 	accts = make([][]byte, 0, prepopulateCount)
 
@@ -246,8 +246,8 @@ func addKeysNoopEvict(mt *Trie, pairs int, totalBatches int, keyLength int, prep
 			accts = append(accts, k)
 		}
 
-		if m%(pairs/10) == (pairs/10)-1 {
-			fmt.Printf("Committing prepopulation with %d pairs at percent %4.2f\n", m, float64(m)/float64(pairs)*100)
+		if m%(accounts/10) == (accounts/10)-1 {
+			fmt.Printf("Committing prepopulation with %d accounts at percent %4.2f\n", m, float64(m)/float64(accounts)*100)
 			mt.Commit()
 		}
 	}
@@ -264,7 +264,7 @@ func addKeysNoopEvict(mt *Trie, pairs int, totalBatches int, keyLength int, prep
 	}
 
 	fmt.Println(mt.countNodes())
-	fmt.Println("Adding keys (batch size", batchSize, ", pairs", pairs, ", totalBatches", totalBatches, ", total keys:", totalBatches*batchSize, ")")
+	fmt.Println("Adding keys (batch size", batchSize, ", accounts", accounts, ", totalBatches", totalBatches, ", total keys:", totalBatches*batchSize, ")")
 	for m := 0; m < totalBatches; m++ {
 
 		epoch_start := time.Now().Truncate(time.Millisecond)
@@ -273,7 +273,7 @@ func addKeysNoopEvict(mt *Trie, pairs int, totalBatches int, keyLength int, prep
 			rand_v := pseudoRand() % uint32(len(accts))
 			mt.Add(accts[rand_k], accts[rand_v])
 		}
-		fmt.Println("Committing", batchSize, "pairs")
+		fmt.Println("Committing", batchSize, "accounts")
 		if !skipCommit {
 			mt.Commit()
 		}
@@ -301,7 +301,7 @@ func addKeysNoopEvict(mt *Trie, pairs int, totalBatches int, keyLength int, prep
 		fmt.Printf("%x\n", mt.root.getHash())
 
 	}
-	fmt.Println("Done", batchSize, ", pairs", pairs, ", totalBatches", totalBatches, ", total keys:", totalBatches*batchSize, ")")
+	fmt.Println("Done", batchSize, ", accounts", accounts, ", totalBatches", totalBatches, ", total keys:", totalBatches*batchSize, ")")
 }
 
 func TestTrieRealisticDisk(t *testing.T) {
@@ -488,7 +488,7 @@ func TestTrieAdd1kEveryTwoSeconds(t *testing.T) {
 	require.NoError(t, err)
 	verifyNewTrie(t, mt)
 	for m := 0; m < 2; m++ {
-		//        fmt.Println("Adding 250k random key/value pairs")
+		//        fmt.Println("Adding 250k random key/value accounts")
 		fmt.Println(stats.String())
 
 		var k []byte
@@ -507,7 +507,7 @@ func TestTrieAdd1kEveryTwoSeconds(t *testing.T) {
 		fmt.Println(stats.String())
 
 	}
-	fmt.Println("Done adding 1k random key/value pairs")
+	fmt.Println("Done adding 1k random key/value accounts")
 	buildDotGraph(t, mt, [][]byte{}, [][]byte{}, "/tmp/trie1k.dot")
 
 }
@@ -517,7 +517,7 @@ func TestTrieAdd1kRandomKeyValues(t *testing.T) {
 	mt, err := MakeTrie(db)
 	require.NoError(t, err)
 	verifyNewTrie(t, mt)
-	fmt.Println("Adding 1k random key/value pairs")
+	fmt.Println("Adding 1k random key/value accounts")
 	fmt.Println(stats.String())
 
 	var k []byte
@@ -532,10 +532,10 @@ func TestTrieAdd1kRandomKeyValues(t *testing.T) {
 		}
 		mt.Add(k, v)
 	}
-	fmt.Println("Done adding 1k random key/value pairs")
-	fmt.Println("Committing 1k random key/value pairs")
+	fmt.Println("Done adding 1k random key/value accounts")
+	fmt.Println("Committing 1k random key/value accounts")
 	mt.Commit()
-	fmt.Println("Done committing 1k random key/value pairs")
+	fmt.Println("Done committing 1k random key/value accounts")
 	fmt.Println(stats.String())
 	//	buildDotGraph(t, mt, [][]byte{}, [][]byte{}, "/tmp/trie1k.dot")
 
