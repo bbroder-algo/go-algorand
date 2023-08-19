@@ -79,7 +79,13 @@ func (bn *BranchNode) descendDelete(mt *Trie, pathKey nibbles, remainingKey nibb
 		// delete this branch's value hash. reset the value to the empty hash.
 		// update the branch node if there are children, or remove it completely.
 		bn.valueHash = crypto.Digest{}
-		return bn, true, nil
+		for i := 0; i < 16; i++ {
+			if bn.children[i] != nil {
+				return bn, true, nil
+			}
+		}
+		mt.delNode(bn)
+		return nil, true, nil
 	}
 	// descend into the branch node.
 	if bn.children[remainingKey[0]] == nil {

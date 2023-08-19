@@ -125,8 +125,14 @@ func (ln *LeafNode) descendAdd(mt *Trie, pathKey nibbles, remainingKey nibbles, 
 	return bn2, nil
 }
 func (ln *LeafNode) descendDelete(mt *Trie, pathKey nibbles, remainingKey nibbles) (node, bool, error) {
-	return nil, equalNibbles(remainingKey, ln.keyEnd), nil
+	if equalNibbles(ln.keyEnd, remainingKey) {
+		// The two keys are the same. Delete the value.
+		mt.delNode(ln)
+		return nil, true, nil
+	}
+	return ln, false, nil
 }
+
 func (ln *LeafNode) descendHashWithCommit(b *pebble.Batch) error {
 	if ln.hash == nil {
 		bytes, err := ln.serialize()
