@@ -32,7 +32,6 @@ type LeafNode struct {
 
 func makeLeafNode(keyEnd nibbles, valueHash crypto.Digest, key nibbles) *LeafNode {
 	stats.makeleaves++
-	//	ln := &LeafNode{keyEnd: keyEnd, valueHash: valueHash, key: key}
 	ln := &LeafNode{keyEnd: keyEnd, valueHash: valueHash, key: make(nibbles, len(key))}
 	copy(ln.key, key)
 	return ln

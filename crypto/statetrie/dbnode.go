@@ -29,7 +29,6 @@ type DBNode struct {
 
 func makeDBNode(hash *crypto.Digest, key nibbles) *DBNode {
 	stats.makedbnodes++
-	//	dbn := &DBNode{hash: hash, key: key}
 	dbn := &DBNode{hash: hash, key: make(nibbles, len(key))}
 	copy(dbn.key, key)
 	return dbn

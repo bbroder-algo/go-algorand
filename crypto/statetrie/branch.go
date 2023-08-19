@@ -35,7 +35,6 @@ func makeBranchNode(children [16]node, valueHash crypto.Digest, key nibbles) *Br
 	stats.makebranches++
 	bn := &BranchNode{children: children, valueHash: valueHash, key: make(nibbles, len(key))}
 	copy(bn.key, key)
-	//	bn := &BranchNode{children: children, valueHash: valueHash, key: key}
 	return bn
 }
 func (bn *BranchNode) descendAdd(mt *Trie, pathKey nibbles, remainingKey nibbles, valueHash crypto.Digest) (node, error) {

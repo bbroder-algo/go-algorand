@@ -32,7 +32,6 @@ type ExtensionNode struct {
 
 func makeExtensionNode(sharedKey nibbles, child node, key nibbles) *ExtensionNode {
 	stats.makeextensions++
-	//	en := &ExtensionNode{sharedKey: sharedKey, child: child, key: key}
 	en := &ExtensionNode{sharedKey: sharedKey, child: child, key: make(nibbles, len(key))}
 	copy(en.key, key)
 	return en
