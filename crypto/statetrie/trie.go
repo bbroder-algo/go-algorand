@@ -22,7 +22,6 @@ import (
 	"github.com/algorand/go-algorand/crypto"
 	"github.com/cockroachdb/pebble"
 	"runtime"
-	"unsafe"
 )
 
 const (
@@ -217,14 +216,15 @@ func (mt *Trie) countNodes() string {
 	mem := func() func(n node) {
 		innerCount := func(n node) {
 			switch n.(type) {
+			//estimates
 			case *BranchNode:
-				nmem.branches += int(unsafe.Sizeof(BranchNode{}))
+				nmem.branches += 16*16 + 32 + 24 + len(n.(*BranchNode).key) + 8 + 32
 			case *LeafNode:
-				nmem.leaves += int(unsafe.Sizeof(LeafNode{}))
+				nmem.leaves += 24 + len(n.(*LeafNode).key) + 24 + len(n.(*LeafNode).keyEnd) + 32 + 8 + 32
 			case *ExtensionNode:
-				nmem.exts += int(unsafe.Sizeof(ExtensionNode{}))
+				nmem.exts += 24 + len(n.(*ExtensionNode).key) + 24 + len(n.(*ExtensionNode).sharedKey) + 8 + 32
 			case *DBNode:
-				nmem.dbnodes += int(unsafe.Sizeof(DBNode{}))
+				nmem.dbnodes += 24 + len(n.(*DBNode).key) + 8 + 32
 			}
 		}
 		return innerCount
@@ -239,7 +239,6 @@ func (mt *Trie) countNodes() string {
 
 }
 
-// Trie node get/set/delete operations
 func (mt *Trie) getNode(dbn dbnode) (node, error) {
 	stats.getnode++
 	dbKey := dbn.getDBKey()
@@ -290,10 +289,6 @@ func (mt *Trie) addNode(n node) {
 	// this key is no longer to be deleted, as it will be overwritten.
 	delete(mt.dels, key)
 }
-
-//rules to descendAdd:
-//if hash is set to nil, the node will be hashed and committed on commit
-//if in the transformation no new node can be set to pathKey then the itself node must be deleted
 
 // Make a dot graph of the trie
 func (mt *Trie) DotGraph(keysAdded [][]byte, valuesAdded [][]byte) string {
