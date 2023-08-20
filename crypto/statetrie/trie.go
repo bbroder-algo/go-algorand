@@ -24,11 +24,13 @@ import (
 )
 
 const (
+	// Maximum key length in bytes that can be added to the trie
 	MaxKeyLength = 65535
 )
 
 var debugTrie = false
 
+// Trie is a hashable 16-way radix tree
 type Trie struct {
 	parent *Trie
 	root   node
@@ -116,6 +118,7 @@ func (mt *Trie) RootHash() (crypto.Digest, error) {
 	return *(mt.root.getHash()), nil
 }
 
+// Child creates a child trie, which can be merged back into the parent
 func (mt *Trie) Child() *Trie {
 	ch := &Trie{parent: mt, store: mt.store}
 	ch.dels = make(map[string]bool)
@@ -125,6 +128,7 @@ func (mt *Trie) Child() *Trie {
 	return ch
 }
 
+// Merge merges the child trie back into the parent
 func (mt *Trie) Merge() {
 	if mt.root != nil {
 		mt.root.merge(mt)
@@ -137,6 +141,7 @@ func (mt *Trie) Merge() {
 	mt.dels = make(map[string]bool)
 }
 
+// Commit commits the trie to the backing store
 func (mt *Trie) Commit() error {
 	mt.store.batchStart()
 	if mt.root != nil {
@@ -146,24 +151,29 @@ func (mt *Trie) Commit() error {
 		}
 	}
 	for k := range mt.dels {
-		mt.store.del([]byte(k))
+		err := mt.store.del([]byte(k))
+		if err != nil {
+			return err
+		}
 	}
 	mt.store.batchEnd()
 	mt.dels = make(map[string]bool)
 	return nil
 }
 
+// delNode marks a node for deletion
 func (mt *Trie) delNode(n node) {
 	stats.delnode++
 	dbKey := n.getKey()
 	if dbKey != nil {
-		// note this key for deletion on commit
 		if debugTrie {
 			fmt.Printf("delNode %T (%x) : (%v)\n", n, dbKey, n)
 		}
 		mt.dels[string(dbKey)] = true
 	}
 }
+
+// addNode marks a node as added
 func (mt *Trie) addNode(n node) {
 	stats.addnode++
 	key := string(n.getKey())
@@ -175,6 +185,8 @@ func (mt *Trie) addNode(n node) {
 	delete(mt.dels, key)
 }
 
+// countNodes returns a string with the number of nodes in the trie but
+// does not follow parent nodes or load backing nodes
 func (mt *Trie) countNodes() string {
 	if mt.root == nil {
 		return "Empty trie"
@@ -216,18 +228,18 @@ func (mt *Trie) countNodes() string {
 
 	mem := func() func(n node) {
 		innerCount := func(n node) {
-			switch n.(type) {
+			switch v := n.(type) {
 			//estimates
 			case *branchNode:
-				nmem.branches += 16*16 + 32 + 24 + len(n.(*branchNode).key) + 8 + 32
+				nmem.branches += 16*16 + 32 + 24 + len(v.key) + 8 + 32
 			case *leafNode:
-				nmem.leaves += 24 + len(n.(*leafNode).key) + 24 + len(n.(*leafNode).keyEnd) + 32 + 8 + 32
+				nmem.leaves += 24 + len(v.key) + 24 + len(v.keyEnd) + 32 + 8 + 32
 			case *extensionNode:
-				nmem.exts += 24 + len(n.(*extensionNode).key) + 24 + len(n.(*extensionNode).sharedKey) + 8 + 32
+				nmem.exts += 24 + len(v.key) + 24 + len(v.sharedKey) + 8 + 32
 			case *parent:
 				nmem.parents += 8
 			case *backingNode:
-				nmem.backings += len(n.(*backingNode).key) + 8 + 32
+				nmem.backings += len(v.key) + 8 + 32
 			}
 		}
 		return innerCount
@@ -251,6 +263,8 @@ func (mt *Trie) DotGraph(keysAdded [][]byte, valuesAdded [][]byte) string {
 	fmt.Printf("root: %v\n", mt.root)
 	return fmt.Sprintf("digraph trie { key [shape=box, label=\"key/value inserted:\\n%s\"];\n %s }\n", keys, mt.dotGraph(mt.root, nibbles{}))
 }
+
+// dot graph generation helper
 func (mt *Trie) dotGraph(n node, path nibbles) string {
 
 	switch tn := n.(type) {

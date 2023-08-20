@@ -52,9 +52,7 @@ func (ba *backingNode) hashingCommit(store backing) error {
 func (ba *backingNode) hashing() error {
 	return nil
 }
-func (ba *backingNode) evict(eviction func(node) bool) {
-	return
-}
+func (ba *backingNode) evict(eviction func(node) bool) {}
 func (ba *backingNode) lambda(l func(node)) {
 	l(ba)
 }

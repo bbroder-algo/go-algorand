@@ -41,7 +41,10 @@ func makePebbleBackstoreDisk(dbdir string, clear bool) *pebbleBackstore {
 		os.RemoveAll(dbdir)
 	}
 	if _, err := os.Stat(dbdir); os.IsNotExist(err) {
-		os.MkdirAll(dbdir, 0755)
+		err := os.MkdirAll(dbdir, 0755)
+		if err != nil {
+			panic(err)
+		}
 	}
 
 	opts := &pebble.Options{}
@@ -81,7 +84,10 @@ func (pb *pebbleBackstore) batchStart() {
 }
 
 func (pb *pebbleBackstore) batchEnd() {
-	pb.db.Apply(pb.b, nil)
+	err := pb.db.Apply(pb.b, nil)
+	if err != nil {
+		panic(err)
+	}
 	pb.b.Close()
 	pb.b = nil
 }

@@ -41,6 +41,7 @@ func pseudoRand() uint32 {
 }
 
 func TestTrieSpecial(t *testing.T) {
+	// partitiontest.PartitionTest(t)
 	mt := MakeTrie(makePebbleBackstoreVFS())
 	key1 := []byte{0x08, 0x0e, 0x02, 0x08}
 	key2 := []byte{0x0b, 0x09, 0x0a, 0x0c}
@@ -78,9 +79,9 @@ func addKeyBatches(b *testing.B, mt *Trie, accounts int, totalBatches int, keyLe
 	b.ResetTimer()
 	for m := 0; m < totalBatches; m++ {
 		for i := 0; i < batchSize; i++ {
-			rand_k := pseudoRand() % uint32(len(accts))
-			rand_v := pseudoRand() % uint32(len(accts))
-			mt.Add(accts[rand_k], accts[rand_v])
+			randk := pseudoRand() % uint32(len(accts))
+			randv := pseudoRand() % uint32(len(accts))
+			mt.Add(accts[randk], accts[randv])
 		}
 		if !skipCommit {
 			mt.Commit()
@@ -100,13 +101,13 @@ func BenchmarkTrieAddFrom64KiB32Disk25(b *testing.B) {
 	addKeyBatches(b, mt, 65_536, b.N, 32, 1*65_536, false, 25_000)
 	back.close()
 }
-func BenchmarkTrieAddFrom64KiB64InMem_25(b *testing.B) {
+func BenchmarkTrieAddFrom64KiB64InMem25(b *testing.B) {
 	back := makePebbleBackstoreVFS()
 	mt := MakeTrie(back)
 	addKeyBatches(b, mt, 65_536, b.N, 64, 1*65_536, false, 25_000)
 	back.close()
 }
-func BenchmarkTrieAddFrom64KiB32InMem_25(b *testing.B) {
+func BenchmarkTrieAddFrom64KiB32InMem25(b *testing.B) {
 	back := makePebbleBackstoreVFS()
 	mt := MakeTrie(back)
 	addKeyBatches(b, mt, 65_536, b.N, 32, 1*65_536, false, 25_000)
@@ -185,9 +186,8 @@ func BenchmarkTrieAddFrom1MiB32InMem250(b *testing.B) {
 	back.close()
 }
 
-func addKeysNoopEvict(mt *Trie, accounts int, totalBatches int, keyLength int, prepopulateCount int, skipCommit bool, state_touched float64) {
+func addKeysNoopEvict(mt *Trie, accounts int, totalBatches int, keyLength int, prepopulateCount int, skipCommit bool, batchSize int) {
 	var accts [][]byte
-	batchSize := int(state_touched * float64(accounts))
 	fmt.Println("Prepopulating the trie with ", prepopulateCount, " accounts")
 	fmt.Println(mt.countNodes())
 
@@ -257,9 +257,9 @@ func addKeysNoopEvict(mt *Trie, accounts int, totalBatches int, keyLength int, p
 		mt.root.evict(shouldEvict)
 
 		epoch_end := time.Now().Truncate(time.Millisecond)
-		time_consumed := epoch_end.Sub(epoch_start)
+		timeConsumed := epoch_end.Sub(epoch_start)
 		fmt.Println(mt.countNodes())
-		fmt.Println("time", time_consumed, "new hash:", mt.root.getHash(), stats.String(), "len(mt.dels):", len(mt.dels))
+		fmt.Println("time", timeConsumed, "new hash:", mt.root.getHash(), stats.String(), "len(mt.dels):", len(mt.dels))
 		fmt.Printf("%x\n", mt.root.getHash())
 
 	}
@@ -267,12 +267,14 @@ func addKeysNoopEvict(mt *Trie, accounts int, totalBatches int, keyLength int, p
 }
 
 func TestTrieRealisticDisk(t *testing.T) {
+	// partitiontest.PartitionTest(t)
 	back := makePebbleBackstoreDisk("pebble2db", true)
 	mt := MakeTrie(back)
-	addKeysNoopEvict(mt, 1_048_576*64, 5, 32, 1.00, false, 0.005)
+	addKeysNoopEvict(mt, 1_048_576*64, 5, 32, 1.00, false, 250_000)
 	back.close()
 }
 func skipTestTrieReloadFromDisk(t *testing.T) {
+	// partitiontest.PartitionTest(t)
 	//    back := makePebbleBackstoreDisk("pebble2db", true)
 	//    mt := MakeTrie(back)
 	hash := []byte{0x50, 0x52, 0x4c, 0x57, 0x50, 0x4a, 0x59, 0x59, 0x5a, 0x37, 0x45, 0x46, 0x58, 0x57, 0x55, 0x57, 0x43, 0x37, 0x32, 0x52, 0x59, 0x50, 0x56, 0x41, 0x41, 0x44, 0x5a, 0x58, 0x43, 0x51, 0x4f, 0x32, 0x42, 0x32, 0x59, 0x52, 0x52, 0x4f, 0x4e, 0x48, 0x42, 0x36, 0x4e, 0x37, 0x4a, 0x4e, 0x47, 0x46, 0x4a, 0x57, 0x54, 0x51}
@@ -282,27 +284,31 @@ func skipTestTrieReloadFromDisk(t *testing.T) {
 
 }
 func TestTrieBob(t *testing.T) {
+	// partitiontest.PartitionTest(t)
 	back := makePebbleBackstoreDisk("pebble2bob", false)
 	mt := MakeTrie(back)
-	addKeysNoopEvict(mt, 1_048_576*1, 5, 32, 0, false, 0.10)
+	addKeysNoopEvict(mt, 1_048_576*1, 5, 32, 0, false, 104_857)
 	back.close()
 }
 func TestTrieAddFrom1MiBDisk(t *testing.T) {
+	// partitiontest.PartitionTest(t)
 	back := makePebbleBackstoreDisk("pebble2db", true)
 	mt := MakeTrie(back)
-	addKeysNoopEvict(mt, 1_048_576*1, 5, 32, 1_048_576*1, false, 0.10)
+	addKeysNoopEvict(mt, 1_048_576*1, 5, 32, 1_048_576*1, false, 104_857)
 	back.close()
 }
 func TestTrieAddFrom4MiBDisk(t *testing.T) {
+	// partitiontest.PartitionTest(t)
 	back := makePebbleBackstoreDisk("pebble2db", true)
 	mt := MakeTrie(back)
-	addKeysNoopEvict(mt, 1_048_576*4, 5, 32, 1_048_576*4, false, 0.10)
+	addKeysNoopEvict(mt, 1_048_576*4, 5, 32, 1_048_576*4, false, 104_857)
 	back.close()
 }
 func TestTrieAddFrom1MiB(t *testing.T) {
+	// partitiontest.PartitionTest(t)
 	back := makePebbleBackstoreVFS()
 	mt := MakeTrie(back)
-	addKeysNoopEvict(mt, 1_048_576*1, 5, 32, 1_048_576*1, false, 0.10)
+	addKeysNoopEvict(mt, 1_048_576*1, 5, 32, 1_048_576*1, false, 104_857)
 	back.close()
 }
 
@@ -421,6 +427,7 @@ func buildDotGraph(t *testing.T, mt *Trie, keys [][]byte, values [][]byte, fn st
 }
 
 func TestTrieAdd1kEveryTwoSeconds(t *testing.T) {
+	// partitiontest.PartitionTest(t)
 	back := makePebbleBackstoreVFS()
 	mt := MakeTrie(back)
 	for m := 0; m < 2; m++ {
@@ -448,6 +455,7 @@ func TestTrieAdd1kEveryTwoSeconds(t *testing.T) {
 	back.close()
 }
 func TestTrieAdd1kRandomKeyValues(t *testing.T) {
+	// partitiontest.PartitionTest(t)
 	back := makePebbleBackstoreVFS()
 	mt := MakeTrie(back)
 	fmt.Println("Adding 1k random key/value accounts")
@@ -476,6 +484,7 @@ func TestTrieAdd1kRandomKeyValues(t *testing.T) {
 }
 
 func TestTrieStupidAddSimpleSequenceNoCache(t *testing.T) {
+	// partitiontest.PartitionTest(t)
 	back := makePebbleBackstoreVFS()
 	mt := MakeTrie(back)
 	var k []byte
@@ -559,6 +568,7 @@ func TestTrieStupidAddSimpleSequenceNoCache(t *testing.T) {
 }
 
 func TestTrieAddSimpleSequence(t *testing.T) {
+	// partitiontest.PartitionTest(t)
 	back := makePebbleBackstoreVFS()
 	mt := MakeTrie(back)
 	var k []byte
@@ -634,6 +644,7 @@ func TestTrieAddSimpleSequence(t *testing.T) {
 }
 
 func TestNibbleUtilities(t *testing.T) {
+	// partitiontest.PartitionTest(t)
 	if false {
 		fmt.Println("TestNibbleUtilities")
 	}

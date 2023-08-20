@@ -42,9 +42,7 @@ func (pa *parent) hashingCommit(store backing) error {
 func (pa *parent) hashing() error {
 	return pa.p.hashing()
 }
-func (pa *parent) evict(eviction func(node) bool) {
-	return
-}
+func (pa *parent) evict(eviction func(node) bool) {}
 func (pa *parent) lambda(l func(node)) {
 	l(pa)
 }

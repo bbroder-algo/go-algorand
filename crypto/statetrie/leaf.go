@@ -38,9 +38,7 @@ func (ln *leafNode) lambda(l func(node)) {
 	l(ln)
 }
 
-func (ln *leafNode) merge(mt *Trie) {
-	return
-}
+func (ln *leafNode) merge(mt *Trie) {}
 func (ln *leafNode) child() node {
 	return makeLeafNode(ln.keyEnd, ln.valueHash, ln.key)
 }
@@ -187,9 +185,7 @@ func (ln *leafNode) serialize() ([]byte, error) {
 	copy(data[33:], pack)
 	return data, nil
 }
-func (ln *leafNode) evict(eviction func(node) bool) {
-	return
-}
+func (ln *leafNode) evict(eviction func(node) bool) {}
 func (ln *leafNode) getKey() nibbles {
 	return ln.key
 }
