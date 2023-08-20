@@ -43,6 +43,7 @@ func MakeTrie(store backing) *Trie {
 	if store == nil {
 		mt.store = makeMemoryBackstore()
 	}
+	mt.root = store.get(nibbles{})
 	return mt
 }
 
@@ -254,8 +255,7 @@ func (mt *Trie) dotGraph(n node, path nibbles) string {
 
 	switch tn := n.(type) {
 	case *backingNode:
-		n, _ := mt.store.get(path)
-		return mt.dotGraph(n, path)
+		return mt.dotGraph(mt.store.get(path), path)
 	case *parent:
 		return mt.dotGraph(tn.p, path)
 	case *leafNode:

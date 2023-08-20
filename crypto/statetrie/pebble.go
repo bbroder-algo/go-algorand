@@ -51,24 +51,21 @@ func makePebbleBackstoreDisk(dbdir string, clear bool) *pebbleBackstore {
 	}
 	return &pebbleBackstore{db: db}
 }
-func (pb *pebbleBackstore) get(key nibbles) (node, error) {
+func (pb *pebbleBackstore) get(key nibbles) node {
 	stats.dbgets++
 
 	dbbytes, closer, err := pb.db.Get(key)
 	if err != nil {
-		fmt.Printf("\ndbKey panic: dbkey %x\n", key)
-		panic(err)
+		fmt.Printf("\npebble err: key %x, error %v\n", key, err)
+		return nil
 	}
 	defer closer.Close()
 
-	n, err := deserializeNode(dbbytes, key)
-	if err != nil {
-		panic(err)
-	}
+	n := deserializeNode(dbbytes, key)
 	if debugTrie {
 		fmt.Printf("pebble.get %T (%x) : (%v)\n", n, key, n)
 	}
-	return n, nil
+	return n
 }
 func (pb *pebbleBackstore) close() error {
 	return pb.db.Close()

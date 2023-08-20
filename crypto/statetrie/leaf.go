@@ -17,7 +17,6 @@
 package statetrie
 
 import (
-	"errors"
 	"fmt"
 	"github.com/algorand/go-algorand/crypto"
 )
@@ -158,20 +157,20 @@ func (ln *leafNode) hashingCommit(store backing) error {
 func (ln *leafNode) hashing() error {
 	return ln.hashingCommit(nil)
 }
-func deserializeLeafNode(data []byte, key nibbles) (*leafNode, error) {
+func deserializeLeafNode(data []byte, key nibbles) *leafNode {
 	if data[0] != 3 && data[0] != 4 {
-		return nil, errors.New("invalid prefix for leaf node")
+		panic("invalid leaf node")
 	}
 	if len(data) < 33 {
-		return nil, errors.New("data too short to be a leaf node")
+		panic("data too short to be a leaf node")
 	}
 
 	keyEnd, err := unpack(data[33:], data[0] == 3)
 	if err != nil {
-		return nil, err
+		panic(err)
 	}
 	lnKey := key[:]
-	return makeLeafNode(keyEnd, crypto.Digest(data[1:33]), lnKey), nil
+	return makeLeafNode(keyEnd, crypto.Digest(data[1:33]), lnKey)
 }
 func (ln *leafNode) serialize() ([]byte, error) {
 	pack, half, err := ln.keyEnd.pack()

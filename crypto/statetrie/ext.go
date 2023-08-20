@@ -17,7 +17,6 @@
 package statetrie
 
 import (
-	"errors"
 	"fmt"
 	"github.com/algorand/go-algorand/crypto"
 )
@@ -176,21 +175,21 @@ func (en *extensionNode) hashingCommit(store backing) error {
 func (en *extensionNode) hashing() error {
 	return en.hashingCommit(nil)
 }
-func deserializeExtensionNode(data []byte, key nibbles) (*extensionNode, error) {
+func deserializeExtensionNode(data []byte, key nibbles) *extensionNode {
 	if data[0] != 1 && data[0] != 2 {
-		return nil, errors.New("invalid prefix for extension node")
+		panic("invalid prefix for extension node")
 	}
 
 	if len(data) < 33 {
-		return nil, errors.New("data too short to be an extension node")
+		panic("data too short to be an extension node")
 	}
 
 	sharedKey, err := unpack(data[33:], data[0] == 1)
 	if err != nil {
-		return nil, err
+		panic(err)
 	}
 	if len(sharedKey) == 0 {
-		return nil, errors.New("sharedKey can't be empty in an extension node")
+		panic("sharedKey can't be empty in an extension node")
 	}
 	hash := new(crypto.Digest)
 	copy(hash[:], data[1:33])
@@ -200,7 +199,7 @@ func deserializeExtensionNode(data []byte, key nibbles) (*extensionNode, error) 
 		chKey = append(chKey, sharedKey...)
 		child = makeBackingNode(hash, chKey)
 	}
-	return makeExtensionNode(sharedKey, child, key), nil
+	return makeExtensionNode(sharedKey, child, key)
 }
 func (en *extensionNode) serialize() ([]byte, error) {
 	pack, half, err := en.sharedKey.pack()

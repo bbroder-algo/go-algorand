@@ -18,7 +18,6 @@
 package statetrie
 
 import (
-	"errors"
 	"fmt"
 	"github.com/algorand/go-algorand/crypto"
 )
@@ -158,12 +157,12 @@ func (bn *branchNode) hashing() error {
 	return bn.hashingCommit(nil)
 }
 
-func deserializeBranchNode(data []byte, key nibbles) (*branchNode, error) {
+func deserializeBranchNode(data []byte, key nibbles) *branchNode {
 	if data[0] != 5 {
-		return nil, errors.New("invalid prefix for branch node")
+		panic("invalid prefix for branch node")
 	}
 	if len(data) < 545 {
-		return nil, errors.New("data too short to be a branch node")
+		panic("data too short to be a branch node")
 	}
 
 	var children [16]node
@@ -177,7 +176,7 @@ func deserializeBranchNode(data []byte, key nibbles) (*branchNode, error) {
 		}
 	}
 	value_hash := crypto.Digest(data[513:545])
-	return makeBranchNode(children, value_hash, key), nil
+	return makeBranchNode(children, value_hash, key)
 }
 func (bn *branchNode) serialize() ([]byte, error) {
 	data := make([]byte, 545)

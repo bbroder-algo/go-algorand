@@ -17,14 +17,13 @@
 package statetrie
 
 import (
-	"fmt"
 	"github.com/algorand/go-algorand/crypto"
 )
 
 type backing interface {
 	batchStart()
 	batchEnd()
-	get(key nibbles) (node, error)
+	get(key nibbles) node
 	set(key nibbles, value []byte) error
 	del(key nibbles) error
 	close() error
@@ -42,18 +41,10 @@ func makeBackingNode(hash *crypto.Digest, key nibbles) *backingNode {
 	return ba
 }
 func (ba *backingNode) add(mt *Trie, pathKey nibbles, remainingKey nibbles, valueHash crypto.Digest) (node, error) {
-	n, err := mt.store.get(pathKey)
-	if err != nil {
-		return nil, err
-	}
-	return n.add(mt, pathKey, remainingKey, valueHash)
+	return mt.store.get(pathKey).add(mt, pathKey, remainingKey, valueHash)
 }
 func (ba *backingNode) delete(mt *Trie, pathKey nibbles, remainingKey nibbles) (node, bool, error) {
-	n, err := mt.store.get(pathKey)
-	if err != nil {
-		return nil, false, err
-	}
-	return n.delete(mt, pathKey, remainingKey)
+	return mt.store.get(pathKey).delete(mt, pathKey, remainingKey)
 }
 func (ba *backingNode) hashingCommit(store backing) error {
 	return nil
@@ -91,13 +82,11 @@ type memoryBackstore struct {
 func makeMemoryBackstore() *memoryBackstore {
 	return &memoryBackstore{db: make(map[string][]byte)}
 }
-func (mb *memoryBackstore) get(key nibbles) (node, error) {
-	n, err := deserializeNode(mb.db[string(key)], key)
-	if err != nil {
-		fmt.Printf("\ndbKey panic: key %x\n", key)
-		panic(err)
+func (mb *memoryBackstore) get(key nibbles) node {
+	if v, ok := mb.db[string(key)]; ok {
+		return deserializeNode(v, key)
 	}
-	return n, nil
+	return nil
 }
 func (mb *memoryBackstore) set(key nibbles, value []byte) error {
 	mb.db[string(key)] = value

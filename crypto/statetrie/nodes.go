@@ -47,10 +47,10 @@ type node interface {
 //  5 == branch
 //
 
-func deserializeNode(nbytes []byte, key nibbles) (node, error) {
+func deserializeNode(nbytes []byte, key nibbles) node {
 	if len(nbytes) == 0 {
 		debug.PrintStack()
-		return nil, fmt.Errorf("empty node")
+		panic("deserializeNode: zero length node")
 	}
 	switch nbytes[0] {
 	case 1, 2:
@@ -60,6 +60,6 @@ func deserializeNode(nbytes []byte, key nibbles) (node, error) {
 	case 5:
 		return deserializeBranchNode(nbytes, key)
 	default:
-		return nil, fmt.Errorf("unknown node type")
+		panic(fmt.Sprintf("deserializeNode: invalid node type %d", nbytes[0]))
 	}
 }
