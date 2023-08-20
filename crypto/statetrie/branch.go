@@ -39,8 +39,8 @@ func makeBranchNode(children [16]node, valueHash crypto.Digest, key nibbles) *br
 func (bn *branchNode) merge(mt *Trie) {
 	for i := range bn.children {
 		if bn.children[i] != nil {
-			if bn.children[i].(*parent) != nil {
-				bn.children[i] = bn.children[i].(*parent).p
+			if pa, ok := bn.children[i].(*parent); ok {
+				bn.children[i] = pa.p
 			} else {
 				bn.children[i].merge(mt)
 			}

@@ -56,13 +56,13 @@ func (en *extensionNode) add(mt *Trie, pathKey nibbles, remainingKey nibbles, va
 	branchHash := crypto.Digest{}
 	// what's left of the extension node shared key after removing the shared part gets
 	// attached to the new branch node.
-	shifted := shiftNibbles(en.sharedKey, len(shNibbles)) // 04 04
+	shifted := shiftNibbles(en.sharedKey, len(shNibbles))
 	if len(shifted) >= 2 {
 		// if there's two or more nibbles left, make another extension node.
-		shifted2 := shiftNibbles(shifted, 1) // 04
-		enKey := pathKey[:]                  // ... 08 0d
+		shifted2 := shiftNibbles(shifted, 1)
+		enKey := pathKey[:]
 		enKey = append(enKey, shNibbles...)
-		enKey = append(enKey, shifted[0]) // ... 08 0d    04
+		enKey = append(enKey, shifted[0])
 		en2 := makeExtensionNode(shifted2, en.child, enKey)
 		mt.addNode(en2)
 		// transition EN.2
@@ -74,7 +74,7 @@ func (en *extensionNode) add(mt *Trie, pathKey nibbles, remainingKey nibbles, va
 		children[shifted[0]] = en.child
 	}
 
-	//what's left of the new add remaining key gets put into the branch node bucket corresponding
+	//what's left of the new remaining key gets put into the branch node bucket corresponding
 	//with its first nibble, or into the valueHash if it's now empty.
 	shifted = shiftNibbles(remainingKey, len(shNibbles))
 	if len(shifted) > 0 {
@@ -136,13 +136,10 @@ func (en *extensionNode) delete(mt *Trie, pathKey nibbles, remainingKey nibbles)
 }
 func (en *extensionNode) merge(mt *Trie) {
 	if en.child != nil {
-		if en.child.(*parent) != nil {
+		if pa, ok := en.child.(*parent); ok {
+			en.child = pa.p
+		} else {
 			en.child.merge(mt)
-			if en.child.(*parent) != nil {
-				en.child = en.child.(*parent).p
-			} else {
-				en.child.merge(mt)
-			}
 		}
 	}
 }

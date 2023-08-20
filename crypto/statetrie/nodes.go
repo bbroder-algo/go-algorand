@@ -40,11 +40,11 @@ type node interface {
 
 // First byte of a committed node indicates the type of node.
 //
-//	 1 == extension, half.
-//   2 == extension, full
-//	 3 == leaf, half.
-//   4 == leaf, full
-//	 5 == branch
+//  1 == extension, half nibble
+//  2 == extension, full 
+//  3 == leaf, half nibble
+//  4 == leaf, full
+//  5 == branch
 //
 
 func deserializeNode(nbytes []byte, key nibbles) (node, error) {

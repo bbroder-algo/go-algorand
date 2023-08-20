@@ -106,7 +106,6 @@ func (ln *leafNode) add(mt *Trie, pathKey nibbles, remainingKey nibbles, valueHa
 
 	if len(shNibbles) >= 2 {
 		// If there was more than one shared nibble, insert an extension node before the branch node.
-		//		mt.addNode(bn2)
 		enKey := pathKey[:]
 		en := makeExtensionNode(shNibbles, bn2, enKey)
 		mt.addNode(en)
@@ -117,7 +116,6 @@ func (ln *leafNode) add(mt *Trie, pathKey nibbles, remainingKey nibbles, valueHa
 		// If there is only one shared nibble, we just make a second branch node as opposed to an
 		// extension node with only one shared nibble, the chances are high that we'd have to just
 		// delete that node and replace it with a full branch node soon anyway.
-		//		mt.addNode(bn2)
 		var children2 [16]node
 		children2[shNibbles[0]] = bn2
 		bnKey := pathKey[:]
