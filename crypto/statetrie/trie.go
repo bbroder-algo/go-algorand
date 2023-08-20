@@ -183,6 +183,7 @@ func (mt *Trie) countNodes() string {
 		leaves   int
 		exts     int
 		parents  int
+		backings int
 	}
 
 	count := func() func(n node) {
@@ -196,6 +197,8 @@ func (mt *Trie) countNodes() string {
 				nc.exts++
 			case *parent:
 				nc.parents++
+			case *backingNode:
+				nc.backings++
 			}
 		}
 		return innerCount
@@ -207,6 +210,7 @@ func (mt *Trie) countNodes() string {
 		leaves   int
 		exts     int
 		parents  int
+		backings int
 	}
 
 	mem := func() func(n node) {
@@ -221,17 +225,19 @@ func (mt *Trie) countNodes() string {
 				nmem.exts += 24 + len(n.(*extensionNode).key) + 24 + len(n.(*extensionNode).sharedKey) + 8 + 32
 			case *parent:
 				nmem.parents += 8
+			case *backingNode:
+				nmem.backings += len(n.(*backingNode).key) + 8 + 32
 			}
 		}
 		return innerCount
 	}()
 	mt.root.lambda(mem)
 
-	return fmt.Sprintf("[nodes: total %d (branches: %d, leaves: %d, exts: %d, dbnodes: %d), mem: total %d (branches: %d, leaves: %d, exts: %d, dbnodes: %d)]",
+	return fmt.Sprintf("[nodes: total %d (branches: %d, leaves: %d, exts: %d, parents: %d, backings: %d), mem: total %d (branches: %d, leaves: %d, exts: %d, parents: %d, backings: %d)]",
 		nc.branches+nc.leaves+nc.exts+nc.parents,
-		nc.branches, nc.leaves, nc.exts, nc.parents,
+		nc.branches, nc.leaves, nc.exts, nc.parents, nc.backings,
 		nmem.branches+nmem.leaves+nmem.exts+nmem.parents,
-		nmem.branches, nmem.leaves, nmem.exts, nmem.parents)
+		nmem.branches, nmem.leaves, nmem.exts, nmem.parents, nmem.backings)
 
 }
 
