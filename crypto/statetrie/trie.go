@@ -24,7 +24,7 @@ import (
 )
 
 const (
-	// Maximum key length in bytes that can be added to the trie
+	// MaxKeyLength is the maximum key length in bytes that can be added to the trie
 	MaxKeyLength = 65535
 )
 
@@ -49,7 +49,7 @@ func MakeTrie(store backing) *Trie {
 	return mt
 }
 
-// Trie Add adds the given key/value pair to the trie.
+// Add adds the given key/value pair to the trie.
 func (mt *Trie) Add(key nibbles, value []byte) (err error) {
 	if len(key) == 0 {
 		return errors.New("empty key not allowed")
@@ -101,7 +101,7 @@ func (mt *Trie) Delete(key nibbles) (bool, error) {
 	return found, err
 }
 
-// Provide the root hash for this trie
+// RootHash provides the root hash for this trie
 func (mt *Trie) RootHash() (crypto.Digest, error) {
 	if mt.root == nil {
 		return crypto.Digest{}, nil
@@ -254,7 +254,7 @@ func (mt *Trie) countNodes() string {
 
 }
 
-// Make a dot graph of the trie
+// DotGraph returns a dot graph of the trie
 func (mt *Trie) DotGraph(keysAdded [][]byte, valuesAdded [][]byte) string {
 	var keys string
 	for i := 0; i < len(keysAdded); i++ {

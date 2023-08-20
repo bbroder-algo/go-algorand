@@ -175,8 +175,8 @@ func deserializeBranchNode(data []byte, key nibbles) *branchNode {
 			children[i] = makeBackingNode(hash, chKey)
 		}
 	}
-	value_hash := crypto.Digest(data[513:545])
-	return makeBranchNode(children, value_hash, key)
+	valueHash := crypto.Digest(data[513:545])
+	return makeBranchNode(children, valueHash, key)
 }
 func (bn *branchNode) serialize() ([]byte, error) {
 	data := make([]byte, 545)
