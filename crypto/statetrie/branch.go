@@ -47,8 +47,14 @@ func (bn *branchNode) merge(mt *Trie) {
 		}
 	}
 }
-func (bn *branchNode) copy() node {
-	return makeBranchNode(bn.children, bn.valueHash, bn.key)
+func (bn *branchNode) child() node {
+	var children [16]node
+	for i := range bn.children {
+		if bn.children[i] != nil {
+			children[i] = makeParent(bn.children[i])
+		}
+	}
+	return makeBranchNode(children, bn.valueHash, bn.key)
 }
 
 func (bn *branchNode) add(mt *Trie, pathKey nibbles, remainingKey nibbles, valueHash crypto.Digest) (node, error) {

@@ -42,7 +42,7 @@ func (ln *leafNode) lambda(l func(node)) {
 func (ln *leafNode) merge(mt *Trie) {
 	return
 }
-func (ln *leafNode) copy() node {
+func (ln *leafNode) child() node {
 	return makeLeafNode(ln.keyEnd, ln.valueHash, ln.key)
 }
 func (ln *leafNode) add(mt *Trie, pathKey nibbles, remainingKey nibbles, valueHash crypto.Digest) (node, error) {

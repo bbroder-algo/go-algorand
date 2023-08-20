@@ -77,8 +77,8 @@ func (ba *backingNode) getHash() *crypto.Digest {
 func (ba *backingNode) merge(mt *Trie) {
 	panic("backingNode cannot be merged")
 }
-func (ba *backingNode) copy() node {
-	panic("backingNode cannot be copied")
+func (ba *backingNode) child() node {
+	panic("backingNode cannot have children ")
 }
 func (ba *backingNode) serialize() ([]byte, error) {
 	panic("backingNode cannot be serialized")

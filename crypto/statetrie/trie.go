@@ -119,7 +119,7 @@ func (mt *Trie) Child() *Trie {
 	ch := &Trie{parent: mt, store: mt.store}
 	ch.dels = make(map[string]bool)
 	if mt.root != nil {
-		ch.root = makeParent(mt.root.getHash(), mt.root.getKey(), mt.root)
+		ch.root = makeParent(mt.root)
 	}
 	return ch
 }
@@ -128,7 +128,7 @@ func (mt *Trie) Merge() {
 	if mt.root != nil {
 		mt.root.merge(mt)
 		mt.parent.root = mt.root
-		mt.root = makeParent(mt.root.getHash(), mt.root.getKey(), mt.root)
+		mt.root = makeParent(mt.root)
 		for k, v := range mt.dels {
 			mt.parent.dels[k] = v
 		}
@@ -220,7 +220,7 @@ func (mt *Trie) countNodes() string {
 			case *extensionNode:
 				nmem.exts += 24 + len(n.(*extensionNode).key) + 24 + len(n.(*extensionNode).sharedKey) + 8 + 32
 			case *parent:
-				nmem.parents += 24 + len(n.(*parent).key) + 8 + 32
+				nmem.parents += 8
 			}
 		}
 		return innerCount
@@ -258,14 +258,14 @@ func (mt *Trie) dotGraph(n node, path nibbles) string {
 	case *extensionNode:
 		en := tn
 		return fmt.Sprintf("n%p [label=\"extension\\nshKey:%x\" shape=box];\n", tn, en.sharedKey) +
-			fmt.Sprintf("n%p -> n%p;\n", en, en.child) +
-			mt.dotGraph(en.child, append(path, en.sharedKey...))
+			fmt.Sprintf("n%p -> n%p;\n", en, en.next) +
+			mt.dotGraph(en.next, append(path, en.sharedKey...))
 	case *branchNode:
 		bn := tn
 		var indexesFilled string
 		indexesFilled = "--"
-		for i, child := range bn.children {
-			if child != nil {
+		for i, ch := range bn.children {
+			if ch != nil {
 				indexesFilled += fmt.Sprintf("%x ", i)
 			}
 		}
@@ -277,9 +277,9 @@ func (mt *Trie) dotGraph(n node, path nibbles) string {
 				s += fmt.Sprintf("n%p -> n%p;\n", tn, child)
 			}
 		}
-		for childrenIndex, child := range bn.children {
-			if child != nil {
-				s += mt.dotGraph(child, append(path, byte(childrenIndex)))
+		for childrenIndex, ch := range bn.children {
+			if ch != nil {
+				s += mt.dotGraph(ch, append(path, byte(childrenIndex)))
 			}
 		}
 		return s

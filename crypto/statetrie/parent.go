@@ -21,23 +21,20 @@ import (
 )
 
 type parent struct {
-	key  nibbles
-	hash *crypto.Digest
-	p    node
+	p node
 }
 
-func makeParent(hash *crypto.Digest, key nibbles, p node) *parent {
+func makeParent(p node) *parent {
 	stats.makepanodes++
-	pa := &parent{hash: hash, key: make(nibbles, len(key)), p: p}
-	copy(pa.key, key)
+	pa := &parent{p: p}
 	return pa
 }
 
 func (pa *parent) add(mt *Trie, pathKey nibbles, remainingKey nibbles, valueHash crypto.Digest) (node, error) {
-	return pa.p.copy().add(mt, pathKey, remainingKey, valueHash)
+	return pa.p.child().add(mt, pathKey, remainingKey, valueHash)
 }
 func (pa *parent) delete(mt *Trie, pathKey nibbles, remainingKey nibbles) (node, bool, error) {
-	return pa.p.copy().delete(mt, pathKey, remainingKey)
+	return pa.p.child().delete(mt, pathKey, remainingKey)
 }
 func (pa *parent) hashingCommit(store backing) error {
 	return pa.p.hashingCommit(store)
@@ -61,7 +58,7 @@ func (pa *parent) getHash() *crypto.Digest {
 func (pa *parent) merge(mt *Trie) {
 	panic("parent cannot be merged")
 }
-func (pa *parent) copy() node {
+func (pa *parent) child() node {
 	panic("parent cannot be copied")
 }
 func (pa *parent) serialize() ([]byte, error) {

@@ -24,14 +24,14 @@ import (
 
 type extensionNode struct {
 	sharedKey nibbles
-	child     node
+	next      node
 	key       nibbles
 	hash      *crypto.Digest
 }
 
-func makeExtensionNode(sharedKey nibbles, child node, key nibbles) *extensionNode {
+func makeExtensionNode(sharedKey nibbles, next node, key nibbles) *extensionNode {
 	stats.makeextensions++
-	en := &extensionNode{sharedKey: sharedKey, child: child, key: make(nibbles, len(key))}
+	en := &extensionNode{sharedKey: sharedKey, next: next, key: make(nibbles, len(key))}
 	copy(en.key, key)
 	return en
 }
@@ -41,12 +41,12 @@ func (en *extensionNode) add(mt *Trie, pathKey nibbles, remainingKey nibbles, va
 	if len(shNibbles) == len(en.sharedKey) {
 		// The entire extension node is shared.  descend.
 		shifted := shiftNibbles(remainingKey, len(shNibbles))
-		replacement, err := en.child.add(mt, append(pathKey, shNibbles...), shifted, valueHash)
+		replacement, err := en.next.add(mt, append(pathKey, shNibbles...), shifted, valueHash)
 		if err != nil {
 			return nil, err
 		}
 		// transition EN.1
-		en.child = replacement
+		en.next = replacement
 		en.hash = nil
 		return en, nil
 	}
@@ -63,7 +63,7 @@ func (en *extensionNode) add(mt *Trie, pathKey nibbles, remainingKey nibbles, va
 		enKey := pathKey[:]
 		enKey = append(enKey, shNibbles...)
 		enKey = append(enKey, shifted[0])
-		en2 := makeExtensionNode(shifted2, en.child, enKey)
+		en2 := makeExtensionNode(shifted2, en.next, enKey)
 		mt.addNode(en2)
 		// transition EN.2
 		children[shifted[0]] = en2
@@ -71,7 +71,7 @@ func (en *extensionNode) add(mt *Trie, pathKey nibbles, remainingKey nibbles, va
 		// if there's only one nibble left, store the child in the branch node.
 		// there can't be no nibbles left, or the earlier entire-node-shared case would have been triggered.
 		// transition EN.3
-		children[shifted[0]] = en.child
+		children[shifted[0]] = en.next
 	}
 
 	//what's left of the new remaining key gets put into the branch node bucket corresponding
@@ -103,7 +103,7 @@ func (en *extensionNode) add(mt *Trie, pathKey nibbles, remainingKey nibbles, va
 		// still some shared key left, store them in an extension node
 		// and point in to the new branch node
 		en.sharedKey = shNibbles
-		en.child = replacement
+		en.next = replacement
 		en.hash = nil
 		// transition EN.6
 		return en, nil
@@ -126,31 +126,29 @@ func (en *extensionNode) delete(mt *Trie, pathKey nibbles, remainingKey nibbles)
 	shifted := shiftNibbles(remainingKey, len(en.sharedKey))
 	enKey := pathKey[:]
 	enKey = append(enKey, shNibbles...)
-	replacementChild, found, err := en.child.delete(mt, enKey, shifted)
+	replacementChild, found, err := en.next.delete(mt, enKey, shifted)
 	if found && err == nil {
 		// the key was found below this node and deleted,
 		// make a new extension node pointing to its replacement.
-		en.child = replacementChild
+		en.next = replacementChild
 	}
 	return en, found, err
 }
 func (en *extensionNode) merge(mt *Trie) {
-	if en.child != nil {
-		if pa, ok := en.child.(*parent); ok {
-			en.child = pa.p
-		} else {
-			en.child.merge(mt)
-		}
+	if pa, ok := en.next.(*parent); ok {
+		en.next = pa.p
+	} else {
+		en.next.merge(mt)
 	}
 }
-func (en *extensionNode) copy() node {
-	return makeExtensionNode(en.sharedKey, en.child.copy(), en.getKey())
+func (en *extensionNode) child() node {
+	return makeExtensionNode(en.sharedKey, makeParent(en.next), en.getKey())
 }
 
 func (en *extensionNode) hashingCommit(store backing) error {
 	if en.hash == nil {
-		if en.child != nil && en.child.getHash() == nil {
-			err := en.child.hashingCommit(store)
+		if en.next.getHash() == nil {
+			err := en.next.hashingCommit(store)
 			if err != nil {
 				return err
 			}
@@ -216,27 +214,21 @@ func (en *extensionNode) serialize() ([]byte, error) {
 		data[0] = 2
 	}
 
-	if en.child != nil {
-		copy(data[1:33], en.child.getHash()[:])
-	}
+	copy(data[1:33], en.next.getHash()[:])
 	copy(data[33:], pack)
 	return data, nil
 }
 func (en *extensionNode) lambda(l func(node)) {
 	l(en)
-	if en.child != nil {
-		en.child.lambda(l)
-	}
+	en.next.lambda(l)
 }
 func (en *extensionNode) evict(eviction func(node) bool) {
 	if eviction(en) {
 		fmt.Printf("evicting ext node %x\n", en.getKey())
-		en.child = makeBackingNode(en.child.getHash(), en.child.getKey())
+		en.next = makeBackingNode(en.next.getHash(), en.next.getKey())
 		stats.evictions++
 	} else {
-		if en.child != nil {
-			en.child.evict(eviction)
-		}
+		en.next.evict(eviction)
 	}
 }
 func (en *extensionNode) getKey() nibbles {

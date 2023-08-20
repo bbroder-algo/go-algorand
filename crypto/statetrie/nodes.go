@@ -25,7 +25,7 @@ import (
 // Trie nodes
 
 type node interface {
-	copy() node
+	child() node
 	getKey() nibbles         // the key of the node in the trie
 	getHash() *crypto.Digest // the hash of the node, if it has been hashed
 	add(mt *Trie, pathKey nibbles, remainingKey nibbles, valueHash crypto.Digest) (node, error)
@@ -41,7 +41,7 @@ type node interface {
 // First byte of a committed node indicates the type of node.
 //
 //  1 == extension, half nibble
-//  2 == extension, full 
+//  2 == extension, full
 //  3 == leaf, half nibble
 //  4 == leaf, full
 //  5 == branch
