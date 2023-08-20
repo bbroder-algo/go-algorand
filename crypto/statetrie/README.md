@@ -32,7 +32,7 @@ Atomic operations sets:
 Extension nodes:
 
 EN.1: Point the existing extension node at a (possibly new or existing) node resulting
-      from performing the add operation on the child.
+      from performing the add operation on the child node.
 EN.2: Create an extension node for the current child and store it in a new branch node child slot.
 EN.3: Store the existing extension node child in a new branch node child slot.
 EN.4: Store the new value in a new leaf node stored in an available child slot of the new branch node.
@@ -63,8 +63,8 @@ Atomic operation sets:
 Branch nodes:
 
 BN.1: Store the new value in the branch node value slot.
-BN.2: Make a new leaf node with the new value, and point of the available branch nodes at it.
-BN.3: Repoint a child at a (possibly new or existing) node resulting from performing
+BN.2: Make a new leaf node with the new value, and point an available branch child slot at it.
+BN.3: Repoint a child slot at a (possibly new or existing) node resulting from performing
       the add operation on the child.
 
 Atomic operation sets:
