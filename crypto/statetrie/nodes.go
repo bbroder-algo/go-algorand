@@ -24,8 +24,6 @@ import (
 
 // Trie nodes
 
-type dbKey []byte
-
 type node interface {
 	copy() node
 	getKey() nibbles         // the key of the node in the trie

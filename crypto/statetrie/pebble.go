@@ -24,8 +24,6 @@ import (
 )
 
 type pebbleBackstore struct {
-	backing
-
 	db *pebble.DB
 	b  *pebble.Batch
 }

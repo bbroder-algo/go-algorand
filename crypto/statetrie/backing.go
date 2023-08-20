@@ -85,8 +85,6 @@ func (ba *backingNode) serialize() ([]byte, error) {
 }
 
 type memoryBackstore struct {
-	backing
-
 	db map[string][]byte
 }
 

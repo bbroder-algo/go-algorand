@@ -68,20 +68,6 @@ func (ns *nibbles) pack() ([]byte, bool, error) {
 
 	return data, half, nil
 }
-func (ns *nibbles) serialize() ([]byte, error) {
-	data, half, err := ns.pack()
-	if err != nil {
-		return nil, err
-	}
-	var buf bytes.Buffer
-	if half {
-		buf.WriteByte(1)
-	} else {
-		buf.WriteByte(0)
-	}
-	buf.Write(data)
-	return buf.Bytes(), nil
-}
 
 func equalNibbles(a nibbles, b nibbles) bool {
 	return bytes.Equal(a, b)
