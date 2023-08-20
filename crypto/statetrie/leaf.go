@@ -78,17 +78,19 @@ func (ln *leafNode) add(mt *Trie, pathKey nibbles, remainingKey nibbles, valueHa
 		children[shiftedLn1[0]] = ln1
 	}
 
-	// Similarly, for our new insertion, if it has no more nibbles, store it in the branch node's value slot.
+	// Similarly, for our new insertion, if it has no more nibbles, store it in the
+	// branch node's value slot.
 	if len(shiftedLn2) == 0 {
 		if len(shiftedLn1) == 0 {
-			// They can't both be empty, otherwise they would have been caught earlier in the equalNibbles check.
+			// They can't both be empty, otherwise they would have been caught earlier in the
+			// equalNibbles check.
 			return nil, fmt.Errorf("both keys are the same but somehow wasn't caught earlier")
 		}
 		// transition LN.4
 		branchHash = valueHash
 	} else {
-		// Otherwise, make a new leaf node that shifts away one nibble, and store it in that nibble's slot
-		// in the branch node.
+		// Otherwise, make a new leaf node that shifts away one
+		// nibble, and store it in that nibble's slot in the branch node.
 		key2 := pathKey[:]
 		key2 = append(key2, shNibbles...)
 		key2 = append(key2, shiftedLn2[0])

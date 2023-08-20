@@ -191,8 +191,9 @@ func (bn *branchNode) evict(eviction func(node) bool) {
 			fmt.Printf("evicting branch node %x, (%v)\n", bn.getKey(), bn)
 		}
 		for i := 0; i < 16; i++ {
-			if bn.children[i] != nil && bn.children[i].getHash() != nil {
-				bn.children[i] = makeBackingNode(bn.children[i].getHash(), bn.children[i].getKey())
+			ch := bn.children[i]
+			if ch != nil && ch.getHash() != nil {
+				bn.children[i] = makeBackingNode(ch.getHash(), ch.getKey())
 				stats.evictions++
 			}
 		}
