@@ -1,0 +1,92 @@
+// Copyright (C) 2018-2023 Algorand, Inc.
+// This file is part of go-algorand
+//
+// go-algorand is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Affero General Public License as
+// published by the Free Software Foundation, either version 3 of the
+// License, or (at your option) any later version.
+//
+// go-algorand is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU Affero General Public License for more details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with go-algorand.  If not, see <https://www.gnu.org/licenses/>.
+
+package statetrie
+
+import (
+	"fmt"
+	"github.com/cockroachdb/pebble"
+	"github.com/cockroachdb/pebble/vfs"
+	"os"
+)
+
+type pebbleBackstore struct {
+	backing
+
+	db *pebble.DB
+	b  *pebble.Batch
+}
+
+func makePebbleBackstoreVFS() *pebbleBackstore {
+	opts := &pebble.Options{FS: vfs.NewMem()}
+	db, err := pebble.Open("", opts)
+	if err != nil {
+		panic(err)
+	}
+	return &pebbleBackstore{db: db}
+}
+func makePebbleBackstoreDisk(dbdir string, clear bool) *pebbleBackstore {
+	if clear {
+		os.RemoveAll(dbdir)
+	}
+	if _, err := os.Stat(dbdir); os.IsNotExist(err) {
+		os.MkdirAll(dbdir, 0755)
+	}
+
+	opts := &pebble.Options{}
+	db, err := pebble.Open(dbdir, opts)
+	if err != nil {
+		panic(err)
+	}
+	return &pebbleBackstore{db: db}
+}
+func (pb *pebbleBackstore) get(key nibbles) (node, error) {
+	stats.dbgets++
+
+	dbbytes, closer, err := pb.db.Get(key)
+	if err != nil {
+		fmt.Printf("\ndbKey panic: dbkey %x\n", key)
+		panic(err)
+	}
+	defer closer.Close()
+
+	n, err := deserializeNode(dbbytes, key)
+	if err != nil {
+		panic(err)
+	}
+	if debugTrie {
+		fmt.Printf("pebble.get %T (%x) : (%v)\n", n, key, n)
+	}
+	return n, nil
+}
+func (pb *pebbleBackstore) close() error {
+	return pb.db.Close()
+}
+func (pb *pebbleBackstore) set(key nibbles, value []byte) error {
+	return pb.db.Set(key, value, pebble.NoSync)
+}
+func (pb *pebbleBackstore) del(key nibbles) error {
+	return pb.db.Delete(key, pebble.NoSync)
+}
+func (pb *pebbleBackstore) batchStart() {
+	pb.b = pb.db.NewBatch()
+}
+
+func (pb *pebbleBackstore) batchEnd() {
+	pb.db.Apply(pb.b, nil)
+	pb.b.Close()
+	pb.b = nil
+}

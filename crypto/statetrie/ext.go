@@ -20,29 +20,28 @@ import (
 	"errors"
 	"fmt"
 	"github.com/algorand/go-algorand/crypto"
-	"github.com/cockroachdb/pebble"
 )
 
-type ExtensionNode struct {
+type extensionNode struct {
 	sharedKey nibbles
 	child     node
 	key       nibbles
 	hash      *crypto.Digest
 }
 
-func makeExtensionNode(sharedKey nibbles, child node, key nibbles) *ExtensionNode {
+func makeExtensionNode(sharedKey nibbles, child node, key nibbles) *extensionNode {
 	stats.makeextensions++
-	en := &ExtensionNode{sharedKey: sharedKey, child: child, key: make(nibbles, len(key))}
+	en := &extensionNode{sharedKey: sharedKey, child: child, key: make(nibbles, len(key))}
 	copy(en.key, key)
 	return en
 }
-func (en *ExtensionNode) descendAdd(mt *Trie, pathKey nibbles, remainingKey nibbles, valueHash crypto.Digest) (node, error) {
+func (en *extensionNode) add(mt *Trie, pathKey nibbles, remainingKey nibbles, valueHash crypto.Digest) (node, error) {
 	// Calculate the shared nibbles between the key we're adding and this extension node.
 	shNibbles := sharedNibbles(en.sharedKey, remainingKey)
 	if len(shNibbles) == len(en.sharedKey) {
 		// The entire extension node is shared.  descend.
 		shifted := shiftNibbles(remainingKey, len(shNibbles))
-		replacement, err := en.child.descendAdd(mt, append(pathKey, shNibbles...), shifted, valueHash)
+		replacement, err := en.child.add(mt, append(pathKey, shNibbles...), shifted, valueHash)
 		if err != nil {
 			return nil, err
 		}
@@ -113,7 +112,7 @@ func (en *ExtensionNode) descendAdd(mt *Trie, pathKey nibbles, remainingKey nibb
 	// transition EN.7
 	return replacement, nil
 }
-func (en *ExtensionNode) descendDelete(mt *Trie, pathKey nibbles, remainingKey nibbles) (node, bool, error) {
+func (en *extensionNode) delete(mt *Trie, pathKey nibbles, remainingKey nibbles) (node, bool, error) {
 	var err error
 	if len(remainingKey) == 0 {
 		// can't stop on an exension node
@@ -127,7 +126,7 @@ func (en *ExtensionNode) descendDelete(mt *Trie, pathKey nibbles, remainingKey n
 	shifted := shiftNibbles(remainingKey, len(en.sharedKey))
 	enKey := pathKey[:]
 	enKey = append(enKey, shNibbles...)
-	replacementChild, found, err := en.child.descendDelete(mt, enKey, shifted)
+	replacementChild, found, err := en.child.delete(mt, enKey, shifted)
 	if found && err == nil {
 		// the key was found below this node and deleted,
 		// make a new extension node pointing to its replacement.
@@ -135,11 +134,26 @@ func (en *ExtensionNode) descendDelete(mt *Trie, pathKey nibbles, remainingKey n
 	}
 	return en, found, err
 }
+func (en *extensionNode) merge(mt *Trie) {
+	if en.child != nil {
+		if en.child.(*parent) != nil {
+			en.child.merge(mt)
+			if en.child.(*parent) != nil {
+				en.child = en.child.(*parent).p
+			} else {
+				en.child.merge(mt)
+			}
+		}
+	}
+}
+func (en *extensionNode) copy() node {
+	return makeExtensionNode(en.sharedKey, en.child.copy(), en.getKey())
+}
 
-func (en *ExtensionNode) descendHashWithCommit(b *pebble.Batch) error {
+func (en *extensionNode) hashingCommit(store backing) error {
 	if en.hash == nil {
 		if en.child != nil && en.child.getHash() == nil {
-			err := en.child.descendHashWithCommit(b)
+			err := en.child.hashingCommit(store)
 			if err != nil {
 				return err
 			}
@@ -150,22 +164,24 @@ func (en *ExtensionNode) descendHashWithCommit(b *pebble.Batch) error {
 			en.hash = new(crypto.Digest)
 			*en.hash = crypto.Hash(bytes)
 		}
-		options := &pebble.WriteOptions{}
 		stats.dbsets++
 		if debugTrie {
 			fmt.Printf("db.set en key %x %v\n", en.getKey(), en)
 		}
-		if b != nil {
-			return b.Set(en.getDBKey(), bytes, options)
+		if store != nil {
+			err = store.set(en.getKey(), bytes)
+			if err != nil {
+				return err
+			}
 		}
 	}
 	return nil
 }
 
-func (en *ExtensionNode) descendHash() error {
-	return en.descendHashWithCommit(nil)
+func (en *extensionNode) hashing() error {
+	return en.hashingCommit(nil)
 }
-func deserializeExtensionNode(data []byte, key nibbles) (*ExtensionNode, error) {
+func deserializeExtensionNode(data []byte, key nibbles) (*extensionNode, error) {
 	if data[0] != 1 && data[0] != 2 {
 		return nil, errors.New("invalid prefix for extension node")
 	}
@@ -187,11 +203,11 @@ func deserializeExtensionNode(data []byte, key nibbles) (*ExtensionNode, error) 
 	if *hash != (crypto.Digest{}) {
 		chKey := key[:]
 		chKey = append(chKey, sharedKey...)
-		child = makeDBNode(hash, chKey)
+		child = makeBackingNode(hash, chKey)
 	}
 	return makeExtensionNode(sharedKey, child, key), nil
 }
-func (en *ExtensionNode) serialize() ([]byte, error) {
+func (en *extensionNode) serialize() ([]byte, error) {
 	pack, half, err := en.sharedKey.pack()
 	if err != nil {
 		return nil, err
@@ -209,16 +225,16 @@ func (en *ExtensionNode) serialize() ([]byte, error) {
 	copy(data[33:], pack)
 	return data, nil
 }
-func (en *ExtensionNode) lambda(l func(node)) {
+func (en *extensionNode) lambda(l func(node)) {
 	l(en)
 	if en.child != nil {
 		en.child.lambda(l)
 	}
 }
-func (en *ExtensionNode) evict(eviction func(node) bool) {
+func (en *extensionNode) evict(eviction func(node) bool) {
 	if eviction(en) {
 		fmt.Printf("evicting ext node %x\n", en.getKey())
-		en.child = makeDBNode(en.child.getHash(), en.child.getKey())
+		en.child = makeBackingNode(en.child.getHash(), en.child.getKey())
 		stats.evictions++
 	} else {
 		if en.child != nil {
@@ -226,15 +242,9 @@ func (en *ExtensionNode) evict(eviction func(node) bool) {
 		}
 	}
 }
-func (en *ExtensionNode) getKey() nibbles {
+func (en *extensionNode) getKey() nibbles {
 	return en.key
 }
-func (en *ExtensionNode) getHash() *crypto.Digest {
+func (en *extensionNode) getHash() *crypto.Digest {
 	return en.hash
-}
-func (en *ExtensionNode) getDBKey() dbKey {
-	if en.hash == nil || en.key == nil {
-		return nil
-	}
-	return makeDBKey(en.key, en.hash)
 }

@@ -19,7 +19,6 @@ package statetrie
 import (
 	"fmt"
 	"github.com/algorand/go-algorand/crypto"
-	"github.com/cockroachdb/pebble"
 	"runtime/debug"
 )
 
@@ -27,31 +26,28 @@ import (
 
 type dbKey []byte
 
-type dbnode interface {
-	getDBKey() dbKey         // nibble key
+type node interface {
+	copy() node
 	getKey() nibbles         // the key of the node in the trie
 	getHash() *crypto.Digest // the hash of the node, if it has been hashed
-}
-
-type node interface {
-	dbnode
-
-	descendAdd(mt *Trie, pathKey nibbles, remainingKey nibbles, valueHash crypto.Digest) (node, error)
-	descendDelete(mt *Trie, pathKey nibbles, remainingKey nibbles) (node, bool, error)
-	descendHash() error
-	descendHashWithCommit(b *pebble.Batch) error
+	add(mt *Trie, pathKey nibbles, remainingKey nibbles, valueHash crypto.Digest) (node, error)
+	delete(mt *Trie, pathKey nibbles, remainingKey nibbles) (node, bool, error)
+	hashing() error
+	hashingCommit(store backing) error
+	merge(mt *Trie)
 	serialize() ([]byte, error)
 	evict(func(node) bool)
 	lambda(func(node))
 }
 
-// Node serializers / deserializers
+// First byte of a committed node indicates the type of node.
 //
-// prefix: 0 == root.
+//	 1 == extension, half.
+//   2 == extension, full
+//	 3 == leaf, half.
+//   4 == leaf, full
+//	 5 == branch
 //
-//	 1 == extension, half.   2 == extension, full
-//		3 == leaf, half.        4 == leaf, full
-//		5 == branch
 
 func deserializeNode(nbytes []byte, key nibbles) (node, error) {
 	if len(nbytes) == 0 {
@@ -68,9 +64,4 @@ func deserializeNode(nbytes []byte, key nibbles) (node, error) {
 	default:
 		return nil, fmt.Errorf("unknown node type")
 	}
-}
-
-func makeDBKey(key nibbles, hash *crypto.Digest) dbKey {
-	stats.makedbkey++
-	return dbKey(key)
 }

@@ -1,4 +1,4 @@
-// Copyright (C) 2017-2023 Algorand, Inc.
+// Copyright (C) 2016-2023 Algorand, Inc.
 
 // This file is part of go-algorand
 //
@@ -21,23 +21,37 @@ import (
 	"errors"
 	"fmt"
 	"github.com/algorand/go-algorand/crypto"
-	"github.com/cockroachdb/pebble"
 )
 
-type BranchNode struct {
+type branchNode struct {
 	children  [16]node
 	valueHash crypto.Digest
 	key       nibbles
 	hash      *crypto.Digest
 }
 
-func makeBranchNode(children [16]node, valueHash crypto.Digest, key nibbles) *BranchNode {
+func makeBranchNode(children [16]node, valueHash crypto.Digest, key nibbles) *branchNode {
 	stats.makebranches++
-	bn := &BranchNode{children: children, valueHash: valueHash, key: make(nibbles, len(key))}
+	bn := &branchNode{children: children, valueHash: valueHash, key: make(nibbles, len(key))}
 	copy(bn.key, key)
 	return bn
 }
-func (bn *BranchNode) descendAdd(mt *Trie, pathKey nibbles, remainingKey nibbles, valueHash crypto.Digest) (node, error) {
+func (bn *branchNode) merge(mt *Trie) {
+	for i := range bn.children {
+		if bn.children[i] != nil {
+			if bn.children[i].(*parent) != nil {
+				bn.children[i] = bn.children[i].(*parent).p
+			} else {
+				bn.children[i].merge(mt)
+			}
+		}
+	}
+}
+func (bn *branchNode) copy() node {
+	return makeBranchNode(bn.children, bn.valueHash, bn.key)
+}
+
+func (bn *branchNode) add(mt *Trie, pathKey nibbles, remainingKey nibbles, valueHash crypto.Digest) (node, error) {
 	if len(remainingKey) == 0 {
 		// If we're here, then set the value hash in this node, overwriting the old one.
 		bn.valueHash = valueHash
@@ -59,7 +73,7 @@ func (bn *BranchNode) descendAdd(mt *Trie, pathKey nibbles, remainingKey nibbles
 		mt.addNode(bn.children[slot])
 	} else {
 		// Not available.  Descend down the branch.
-		replacement, err := bn.children[slot].descendAdd(mt, append(pathKey, remainingKey[0]), shifted, valueHash)
+		replacement, err := bn.children[slot].add(mt, append(pathKey, remainingKey[0]), shifted, valueHash)
 		if err != nil {
 			return nil, err
 		}
@@ -70,7 +84,7 @@ func (bn *BranchNode) descendAdd(mt *Trie, pathKey nibbles, remainingKey nibbles
 
 	return bn, nil
 }
-func (bn *BranchNode) descendDelete(mt *Trie, pathKey nibbles, remainingKey nibbles) (node, bool, error) {
+func (bn *branchNode) delete(mt *Trie, pathKey nibbles, remainingKey nibbles) (node, bool, error) {
 	if len(remainingKey) == 0 {
 		if (bn.valueHash == crypto.Digest{}) {
 			// valueHash is empty -- key not found.
@@ -95,44 +109,50 @@ func (bn *BranchNode) descendDelete(mt *Trie, pathKey nibbles, remainingKey nibb
 	shifted := shiftNibbles(remainingKey, 1)
 	lnKey := pathKey[:]
 	lnKey = append(lnKey, remainingKey[0])
-	replacementChild, found, err := bn.children[remainingKey[0]].descendDelete(mt, lnKey, shifted)
+	replacementChild, found, err := bn.children[remainingKey[0]].delete(mt, lnKey, shifted)
 	if found && err == nil {
 		bn.children[remainingKey[0]] = replacementChild
 	}
 	return bn, found, err
 }
-func (bn *BranchNode) descendHashWithCommit(b *pebble.Batch) error {
+func (bn *branchNode) hashingCommit(store backing) error {
 	if bn.hash == nil {
 		for i := 0; i < 16; i++ {
 			if bn.children[i] != nil && bn.children[i].getHash() == nil {
-				err := bn.children[i].descendHashWithCommit(b)
+				err := bn.children[i].hashingCommit(store)
 				if err != nil {
 					return err
 				}
 			}
 		}
 		bytes, err := bn.serialize()
-		if err == nil {
-			stats.cryptohashes++
-			bn.hash = new(crypto.Digest)
-			*bn.hash = crypto.Hash(bytes)
+		if err != nil {
+			return err
 		}
-		options := &pebble.WriteOptions{}
+		stats.cryptohashes++
+		bn.hash = new(crypto.Digest)
+		*bn.hash = crypto.Hash(bytes)
+
 		stats.dbsets++
 		if debugTrie {
 			fmt.Printf("db.set bn key %x dbkey %v\n", bn.getKey(), bn)
 		}
-		if b != nil {
-			return b.Set(bn.getDBKey(), bytes, options)
+
+		if store != nil {
+			err = store.set(bn.getKey(), bytes)
+			if err != nil {
+				return err
+			}
 		}
 	}
 	return nil
 }
 
-func (bn *BranchNode) descendHash() error {
-	return bn.descendHashWithCommit(nil)
+func (bn *branchNode) hashing() error {
+	return bn.hashingCommit(nil)
 }
-func deserializeBranchNode(data []byte, key nibbles) (*BranchNode, error) {
+
+func deserializeBranchNode(data []byte, key nibbles) (*branchNode, error) {
 	if data[0] != 5 {
 		return nil, errors.New("invalid prefix for branch node")
 	}
@@ -147,13 +167,13 @@ func deserializeBranchNode(data []byte, key nibbles) (*BranchNode, error) {
 		if *hash != (crypto.Digest{}) {
 			chKey := key[:]
 			chKey = append(chKey, byte(i))
-			children[i] = makeDBNode(hash, chKey)
+			children[i] = makeBackingNode(hash, chKey)
 		}
 	}
 	value_hash := crypto.Digest(data[513:545])
 	return makeBranchNode(children, value_hash, key), nil
 }
-func (bn *BranchNode) serialize() ([]byte, error) {
+func (bn *branchNode) serialize() ([]byte, error) {
 	data := make([]byte, 545)
 	data[0] = 5
 
@@ -165,14 +185,14 @@ func (bn *BranchNode) serialize() ([]byte, error) {
 	copy(data[513:545], bn.valueHash[:])
 	return data, nil
 }
-func (bn *BranchNode) evict(eviction func(node) bool) {
+func (bn *branchNode) evict(eviction func(node) bool) {
 	if eviction(bn) {
 		if debugTrie {
 			fmt.Printf("evicting branch node %x, (%v)\n", bn.getKey(), bn)
 		}
 		for i := 0; i < 16; i++ {
 			if bn.children[i] != nil && bn.children[i].getHash() != nil {
-				bn.children[i] = makeDBNode(bn.children[i].getHash(), bn.children[i].getKey())
+				bn.children[i] = makeBackingNode(bn.children[i].getHash(), bn.children[i].getKey())
 				stats.evictions++
 			}
 		}
@@ -184,7 +204,7 @@ func (bn *BranchNode) evict(eviction func(node) bool) {
 		}
 	}
 }
-func (bn *BranchNode) lambda(l func(node)) {
+func (bn *branchNode) lambda(l func(node)) {
 	l(bn)
 	for i := 0; i < 16; i++ {
 		if bn.children[i] != nil {
@@ -193,15 +213,9 @@ func (bn *BranchNode) lambda(l func(node)) {
 	}
 }
 
-func (bn *BranchNode) getKey() nibbles {
+func (bn *branchNode) getKey() nibbles {
 	return bn.key
 }
-func (bn *BranchNode) getHash() *crypto.Digest {
+func (bn *branchNode) getHash() *crypto.Digest {
 	return bn.hash
-}
-func (bn *BranchNode) getDBKey() dbKey {
-	if bn.hash == nil || bn.key == nil {
-		return nil
-	}
-	return makeDBKey(bn.key, bn.hash)
 }

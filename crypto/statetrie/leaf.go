@@ -20,27 +20,32 @@ import (
 	"errors"
 	"fmt"
 	"github.com/algorand/go-algorand/crypto"
-	"github.com/cockroachdb/pebble"
 )
 
-type LeafNode struct {
+type leafNode struct {
 	keyEnd    nibbles
 	valueHash crypto.Digest
 	key       nibbles
 	hash      *crypto.Digest
 }
 
-func makeLeafNode(keyEnd nibbles, valueHash crypto.Digest, key nibbles) *LeafNode {
+func makeLeafNode(keyEnd nibbles, valueHash crypto.Digest, key nibbles) *leafNode {
 	stats.makeleaves++
-	ln := &LeafNode{keyEnd: keyEnd, valueHash: valueHash, key: make(nibbles, len(key))}
+	ln := &leafNode{keyEnd: keyEnd, valueHash: valueHash, key: make(nibbles, len(key))}
 	copy(ln.key, key)
 	return ln
 }
-func (ln *LeafNode) lambda(l func(node)) {
+func (ln *leafNode) lambda(l func(node)) {
 	l(ln)
 }
 
-func (ln *LeafNode) descendAdd(mt *Trie, pathKey nibbles, remainingKey nibbles, valueHash crypto.Digest) (node, error) {
+func (ln *leafNode) merge(mt *Trie) {
+	return
+}
+func (ln *leafNode) copy() node {
+	return makeLeafNode(ln.keyEnd, ln.valueHash, ln.key)
+}
+func (ln *leafNode) add(mt *Trie, pathKey nibbles, remainingKey nibbles, valueHash crypto.Digest) (node, error) {
 	if equalNibbles(ln.keyEnd, remainingKey) {
 		// The two keys are the same. Replace the value.
 		// transition LN.1
@@ -124,7 +129,7 @@ func (ln *LeafNode) descendAdd(mt *Trie, pathKey nibbles, remainingKey nibbles, 
 	// transition LN.8
 	return bn2, nil
 }
-func (ln *LeafNode) descendDelete(mt *Trie, pathKey nibbles, remainingKey nibbles) (node, bool, error) {
+func (ln *leafNode) delete(mt *Trie, pathKey nibbles, remainingKey nibbles) (node, bool, error) {
 	if equalNibbles(ln.keyEnd, remainingKey) {
 		// The two keys are the same. Delete the value.
 		mt.delNode(ln)
@@ -133,7 +138,7 @@ func (ln *LeafNode) descendDelete(mt *Trie, pathKey nibbles, remainingKey nibble
 	return ln, false, nil
 }
 
-func (ln *LeafNode) descendHashWithCommit(b *pebble.Batch) error {
+func (ln *leafNode) hashingCommit(store backing) error {
 	if ln.hash == nil {
 		bytes, err := ln.serialize()
 		if err == nil {
@@ -141,21 +146,19 @@ func (ln *LeafNode) descendHashWithCommit(b *pebble.Batch) error {
 			ln.hash = new(crypto.Digest)
 			*ln.hash = crypto.Hash(bytes)
 		}
-		options := &pebble.WriteOptions{}
-		stats.dbsets++
-		if debugTrie {
-			fmt.Printf("db.set ln key %x : (%v)\n", ln.getKey(), ln)
-		}
-		if b != nil {
-			return b.Set(ln.getDBKey(), bytes, options)
+		if store != nil {
+			err := store.set(ln.getKey(), bytes)
+			if err != nil {
+				return err
+			}
 		}
 	}
 	return nil
 }
-func (ln *LeafNode) descendHash() error {
-	return ln.descendHashWithCommit(nil)
+func (ln *leafNode) hashing() error {
+	return ln.hashingCommit(nil)
 }
-func deserializeLeafNode(data []byte, key nibbles) (*LeafNode, error) {
+func deserializeLeafNode(data []byte, key nibbles) (*leafNode, error) {
 	if data[0] != 3 && data[0] != 4 {
 		return nil, errors.New("invalid prefix for leaf node")
 	}
@@ -170,7 +173,7 @@ func deserializeLeafNode(data []byte, key nibbles) (*LeafNode, error) {
 	lnKey := key[:]
 	return makeLeafNode(keyEnd, crypto.Digest(data[1:33]), lnKey), nil
 }
-func (ln *LeafNode) serialize() ([]byte, error) {
+func (ln *leafNode) serialize() ([]byte, error) {
 	pack, half, err := ln.keyEnd.pack()
 	if err != nil {
 		return nil, err
@@ -185,18 +188,12 @@ func (ln *LeafNode) serialize() ([]byte, error) {
 	copy(data[33:], pack)
 	return data, nil
 }
-func (ln *LeafNode) evict(eviction func(node) bool) {
+func (ln *leafNode) evict(eviction func(node) bool) {
 	return
 }
-func (ln *LeafNode) getKey() nibbles {
+func (ln *leafNode) getKey() nibbles {
 	return ln.key
 }
-func (ln *LeafNode) getHash() *crypto.Digest {
+func (ln *leafNode) getHash() *crypto.Digest {
 	return ln.hash
-}
-func (ln *LeafNode) getDBKey() dbKey {
-	if ln.hash == nil || ln.key == nil {
-		return nil
-	}
-	return makeDBKey(ln.key, ln.hash)
 }
