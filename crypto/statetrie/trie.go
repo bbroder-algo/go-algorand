@@ -45,7 +45,7 @@ func MakeTrie(store backing) *Trie {
 	if store == nil {
 		mt.store = makeMemoryBackstore()
 	}
-	mt.root = store.get(nibbles{})
+	mt.root = mt.store.get(nibbles{})
 	return mt
 }
 

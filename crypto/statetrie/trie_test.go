@@ -45,6 +45,26 @@ func reset(mt *Trie) {
 	mt.dels = make(map[string]bool)
 }
 
+func TestTrieDelete2(t *testing.T) { // nolint:paralleltest // Serial tests for trie for the moment
+	partitiontest.PartitionTest(t)
+	// t.Parallel()
+	fmt.Println(t.Name())
+
+	mt := MakeTrie(nil)
+	key1 := nibbles{0x08, 0x0e, 0x02, 0x08}
+	val1 := nibbles{0x03, 0x09, 0x0a, 0x0c}
+	key2 := nibbles{0x08, 0x0d, 0x02, 0x08}
+	val2 := nibbles{0x03, 0x09, 0x0a, 0x0c}
+	debugTrie = false
+	mt.Add(key1, val1)
+	fmt.Println("K1:V1 Hash:", mt.Hash())
+	mt.Add(key2, val2)
+	fmt.Println("K1:V1,K2:V2 Hash:", mt.Hash())
+	mt.Delete(key2)
+	fmt.Println("K1:V1,K2:V2,D2 Hash:", mt.Hash())
+	debugTrie = false
+}
+
 func TestTrieDelete(t *testing.T) { // nolint:paralleltest // Serial tests for trie for the moment
 	partitiontest.PartitionTest(t)
 	// t.Parallel()
