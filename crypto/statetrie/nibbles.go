@@ -29,6 +29,7 @@ type nibbles []byte
 // half indicates if the last byte of the returned array is a full byte or
 // only the high 4 bits are included.
 func unpack(data []byte, half bool) (nibbles, error) {
+	return nibbles(data), nil
 	var ns nibbles
 	if half {
 		ns = make([]byte, len(data)*2-1)
@@ -46,27 +47,28 @@ func unpack(data []byte, half bool) (nibbles, error) {
 			ns[i] = data[j] & 15
 			j++
 		}
+		if ns[i] > 15 {
+			return nil, errors.New("nibbles can't contain values greater than 15")
+		}
 	}
 	return ns, nil
 }
 func (ns *nibbles) pack() ([]byte, bool, error) {
-	var data []byte
-	half := false
-	j := 0
+	return *ns, false, nil
+	length := len(*ns)
+	data := make([]byte, length/2+length%2)
 	for i := 0; i < len(*ns); i++ {
 		if (*ns)[i] > 15 {
 			return nil, false, errors.New("nibbles can't contain values greater than 15")
 		}
-		half = !half
-		if half {
-			data = append(data, (*ns)[i]<<4)
+		if i%2 == 0 {
+			data[i/2] = (*ns)[i] << 4
 		} else {
-			data[j] = data[j] | (*ns)[i]
-			j++
+			data[i/2] = data[i/2] | (*ns)[i]
 		}
 	}
 
-	return data, half, nil
+	return data, length%2 != 0, nil
 }
 
 func equalNibbles(a nibbles, b nibbles) bool {
@@ -89,13 +91,10 @@ func sharedNibbles(arr1 nibbles, arr2 nibbles) nibbles {
 	if len(arr2) < minLength {
 		minLength = len(arr2)
 	}
-	shared := nibbles{}
 	for i := 0; i < minLength; i++ {
-		if arr1[i] == arr2[i] {
-			shared = append(shared, arr1[i])
-		} else {
-			break
+		if arr1[i] != arr2[i] {
+			return arr1[:i]
 		}
 	}
-	return shared
+	return arr1[:minLength]
 }

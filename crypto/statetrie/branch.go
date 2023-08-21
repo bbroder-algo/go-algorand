@@ -17,6 +17,7 @@
 package statetrie
 
 import (
+	"bytes"
 	"fmt"
 	"github.com/algorand/go-algorand/crypto"
 )
@@ -233,17 +234,24 @@ func deserializeBranchNode(data []byte, key nibbles) *branchNode {
 	valueHash := crypto.Digest(data[513:545])
 	return makeBranchNode(children, valueHash, key)
 }
-func (bn *branchNode) serialize() ([]byte, error) {
-	data := make([]byte, 545)
-	data[0] = 5
 
+var bnbuffer bytes.Buffer
+
+func (bn *branchNode) serialize() ([]byte, error) {
+	bnbuffer.Reset()
+	var empty crypto.Digest
+	prefix := byte(5)
+
+	bnbuffer.WriteByte(prefix)
 	for i := 0; i < 16; i++ {
 		if bn.children[i] != nil {
-			copy(data[1+i*32:33+i*32], bn.children[i].getHash()[:])
+			bnbuffer.Write(bn.children[i].getHash()[:])
+		} else {
+			bnbuffer.Write(empty[:])
 		}
 	}
-	copy(data[513:545], bn.valueHash[:])
-	return data, nil
+	bnbuffer.Write(bn.valueHash[:])
+	return bnbuffer.Bytes(), nil
 }
 func (bn *branchNode) evict(eviction func(node) bool) {
 	if eviction(bn) {

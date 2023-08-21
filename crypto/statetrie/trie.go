@@ -180,8 +180,8 @@ func (mt *Trie) delNode(n node) {
 func (mt *Trie) addNode(n node) {
 	stats.addnode++
 	key := string(n.getKey())
-	_, _, lineno, _ := runtime.Caller(1)
 	if debugTrie {
+		_, _, lineno, _ := runtime.Caller(1)
 		fmt.Printf("addNode %T (%x) : (%v) caller %d\n", n, key, n, lineno)
 	}
 	// this key is no longer to be deleted, as it will be overwritten.

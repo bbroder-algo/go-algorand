@@ -17,6 +17,7 @@
 package statetrie
 
 import (
+	"bytes"
 	"fmt"
 	"github.com/algorand/go-algorand/crypto"
 )
@@ -191,20 +192,24 @@ func deserializeLeafNode(data []byte, key nibbles) *leafNode {
 	lnKey := key[:]
 	return makeLeafNode(keyEnd, crypto.Digest(data[1:33]), lnKey)
 }
+
+var lnbuffer bytes.Buffer
+
 func (ln *leafNode) serialize() ([]byte, error) {
+	lnbuffer.Reset()
+
+	prefix := byte(4)
 	pack, half, err := ln.keyEnd.pack()
 	if err != nil {
 		return nil, err
 	}
-	data := make([]byte, 33+len(pack))
 	if half {
-		data[0] = 3
-	} else {
-		data[0] = 4
+		prefix = byte(3)
 	}
-	copy(data[1:33], ln.valueHash[:])
-	copy(data[33:], pack)
-	return data, nil
+	lnbuffer.WriteByte(prefix)
+	lnbuffer.Write(ln.valueHash[:])
+	lnbuffer.Write(pack)
+	return lnbuffer.Bytes(), nil
 }
 func (ln *leafNode) evict(eviction func(node) bool) {}
 func (ln *leafNode) getKey() nibbles {

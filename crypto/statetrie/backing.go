@@ -105,3 +105,24 @@ func (mb *memoryBackstore) close() error {
 	mb.db = make(map[string][]byte)
 	return nil
 }
+
+type nullBackstore struct {
+}
+
+func makeNullBackstore() *nullBackstore {
+	return &nullBackstore{}
+}
+func (nb *nullBackstore) get(key nibbles) node {
+	return nil
+}
+func (nb *nullBackstore) set(key nibbles, value []byte) error {
+	return nil
+}
+func (nb *nullBackstore) del(key nibbles) error {
+	return nil
+}
+func (nb *nullBackstore) batchStart() {}
+func (nb *nullBackstore) batchEnd()   {}
+func (nb *nullBackstore) close() error {
+	return nil
+}
