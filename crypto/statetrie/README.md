@@ -115,7 +115,7 @@ Operation sets (1 + 1 + 1 = 3 sets) :
 
 A delete results in a group of one or more trie transitions from a group of 25.
 
-** Leaf nodes**
+**Leaf nodes**
 
   * LN.DEL.1
 
@@ -123,7 +123,7 @@ A delete results in a group of one or more trie transitions from a group of 25.
   a branch or extension node are replaced with nil.  The node is added to the trie's
   list of deleted keys for later backstore commit.
 
-** Branch nodes**
+**Branch nodes**
 
 BN.DEL.1: Empty the value in the branch node value space.
 BN.DEL.2: Delete the branch node.
@@ -147,7 +147,7 @@ Operation sets (1 + 1 + 1 = 3 sets):
   Replace the child slot with a new node, as the delete key was found in the child
   subtrie.  Mark the node for rehashing.
 
-** Extension nodes**
+**Extension nodes**
 
 EN.DEL.1: Delete this node.
 EN.DEL.2: Repoint a child slot at a (possibly new or existing) node 
