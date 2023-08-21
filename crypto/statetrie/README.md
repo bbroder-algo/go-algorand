@@ -59,11 +59,6 @@ fmt.Println("K1:V1 Hash:", mt.Hash())
 mt.Commit()
 ```
 
-The trie provides a SHA-512/256 checksum at the root.  The trie is a
-16(nibble)-ary trie.  Keys are maintained as `nibbles` slices with pack and
-unpack methods that compress them into 8-byte data slices with a half/full
-ending bit.
-
 ***Trie nodes:***
 
 There are six possible trie nodes.  Any of the node types can be the root of a
@@ -96,21 +91,21 @@ in an add or delete operation.
 These nodes are soft links back to a node in the backing store.  They are
 expanded into one of the three main nodes if the node is read.
 
-***Trie expansion from initalization:***
+***Trie lazy expansion from initialization:***
 
-When initializing the trie, the backing store is queried using an empty nibble
+When constructing the trie, the backing store is queried using an empty nibble
 key. The response from the backing store is then deserialized and positioned at
 the trie's root. If the root node contains references to child nodes (whether
 as children in branches or subsequent nodes in an extension), these are
-constructed as backing store nodes within the trie. In the absence of such
-references, the root node remains nil. Add Operations:
+constructed as backing store nodes within the trie. In the absence of a root
+node, the root node is nil.
 
 When adding a new entry, the trie undergoes a traversal, reaching the final
-leaf node where the value hash is to be inserted. Throughout this traversal,
-any encountered backing store nodes or parent nodes are promoted. This means
-they're transformed into one of the trie's primary node types. This promotion
-ensures that the trie maintains its structural and operational integrity as new
-entries are integrated. Child Trie Handling:
+leaf or branch node where the value hash is to be contained. Throughout this
+traversal, any encountered backing store nodes or parent nodes are promoted.
+This means they're transformed into one of the trie's primary node types. This
+promotion ensures that the trie maintains its structural and operational
+integrity as new entries are integrated. 
 
 When a child trie is initialized, it's anchored to its parent by setting its
 root node as a parent node that points back to the parent trie's root.
@@ -118,6 +113,12 @@ Accessing this child trie for add or delete operations involves converting
 these parent nodes into full-fledged trie nodes. This conversion happens by
 copying the original parent node and then modifying or replacing it as required
 by the specific trie operation in question. 
+
+***Nibbles:***
+
+4-bit keys are maintained as `nibbles` slices with utility `pack` and `unpack` 
+methods to move them into and out of 8-byte data slices, with a half/full
+last-byte bit.
 
 ***Trie child and merge operations:***
 
