@@ -35,7 +35,7 @@ LN.6: Replace the leaf node with a new extention node in front of the new branch
 LN.7: Replace the leaf node with a second new branch node in front of the new branch node.
 LN.8: Replace the leaf node with the branch node created earlier.
 
-Atomic operations sets (1 + 2x2 + 2x2x2 = 13 operation sets):
+Operation sets (1 + 2x2 + 2x2x2 = 13 sets):
 
   * LN.1
 
@@ -64,7 +64,7 @@ EN.5: Store the new value in the value slot of the new branch node.
 EN.6: Modify the existing extension node shared key and point the child at the new branch node.
 EN.7: Replace the extension node with the branch node created earlier.
 
-Atomic operation sets (1 + 2x2 + 2x2 = 9 operation sets) :
+Operation sets (1 + 2x2 + 2x2 = 9 sets) :
 
   * EN1
 
@@ -91,7 +91,7 @@ BN.2: Make a new leaf node with the new value, and point an available branch chi
 BN.3: Repoint a child slot at a (possibly new or existing) node resulting from performing
       the add operation on the child.
 
-Atomic operation sets (1 + 1 + 1 = 3 operation sets) :
+Operation sets (1 + 1 + 1 = 3 sets) :
 
   * BN.1
 
@@ -105,6 +105,61 @@ Atomic operation sets (1 + 1 + 1 = 3 operation sets) :
 
   This repoints the child node to a new/existing node resulting from performing
   the add operation on the child node.
+
+***Trie transitions during Delete operation:***
+
+A delete results in a group of one or more trie transitions from a group of 25.
+
+** Leaf nodes**
+
+  * LN.DEL.1
+
+  Delete this leaf node that matches the delete key.  Pointers to this node from
+  a branch or extension node are replaced with nil.  The node is added to the trie's
+  list of deleted keys for later backstore commit.
+
+** Branch nodes**
+
+BN.DEL.1: Empty the value in the branch node value space.
+BN.DEL.2: Delete the branch node.
+BN.DEL.3: Repoint a child slot at a (possibly new or existing) node 
+          resulting from performing the delete operation on the child.
+
+Operation sets (1 + 1 + 1 = 3 sets):
+
+  * BN.DEL.1
+
+  Copy the empty hash into the value slot and mark the node for rehashing.
+
+   
+  * BN.DEL.2
+
+  Delete the branch node, as the delete removed the value slot and there are no 
+  children.  Add it to the list of the trie's deleted nodes for backstore commit.
+
+  * BN.DEL.3
+
+  Replace the child slot with a new node, as the delete key was found in the child
+  subtrie.  Mark the node for rehashing.
+
+** Extension nodes**
+
+EN.DEL.1: Delete this node.
+EN.DEL.2: Repoint a child slot at a (possibly new or existing) node 
+          resulting from performing the delete operation on the child.
+
+Operation sets (1 + 1 = 2 sets)
+
+  * EN.DEL.1
+
+  The extension node can be deleted because the child was deleted after finding
+  the key in the lower subtrie.
+
+  * EN.DEL.2
+
+  The extension node is now pointing at a new child as a result of finding the
+  key in the lower subtrie.  Mark the node for rehashing.
+
 
 ***Trie child and merge operations:***
 

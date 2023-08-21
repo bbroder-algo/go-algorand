@@ -97,12 +97,15 @@ func (bn *branchNode) delete(mt *Trie, pathKey nibbles, remainingKey nibbles) (n
 		}
 		// delete this branch's value hash. reset the value to the empty hash.
 		// update the branch node if there are children, or remove it completely.
+		bn.hash = nil
 		bn.valueHash = crypto.Digest{}
 		for i := 0; i < 16; i++ {
 			if bn.children[i] != nil {
+				// transition BN.DEL.1
 				return bn, true, nil
 			}
 		}
+		// transition BN.DEL.2
 		mt.delNode(bn)
 		return nil, true, nil
 	}
@@ -116,9 +119,11 @@ func (bn *branchNode) delete(mt *Trie, pathKey nibbles, remainingKey nibbles) (n
 	lnKey = append(lnKey, remainingKey[0])
 	replacementChild, found, err := bn.children[remainingKey[0]].delete(mt, lnKey, shifted)
 	if found && err == nil {
+		// transition BN.DEL.3
 		bn.hash = nil
 		bn.children[remainingKey[0]] = replacementChild
 	}
+	// returning either false or an error.
 	return bn, found, err
 }
 func (bn *branchNode) hashingCommit(store backing) error {

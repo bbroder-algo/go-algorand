@@ -132,6 +132,7 @@ func (ln *leafNode) add(mt *Trie, pathKey nibbles, remainingKey nibbles, valueHa
 func (ln *leafNode) delete(mt *Trie, pathKey nibbles, remainingKey nibbles) (node, bool, error) {
 	if equalNibbles(ln.keyEnd, remainingKey) {
 		// The two keys are the same. Delete the value.
+		// transition LN.DEL.1
 		mt.delNode(ln)
 		return nil, true, nil
 	}

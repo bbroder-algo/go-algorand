@@ -127,9 +127,19 @@ func (en *extensionNode) delete(mt *Trie, pathKey nibbles, remainingKey nibbles)
 	enKey = append(enKey, shNibbles...)
 	replacementChild, found, err := en.next.delete(mt, enKey, shifted)
 	if found && err == nil {
+		// the key was found below this node and deleted, and there
+		// is no replacement
+		if replacementChild == nil {
+			// Transition EN.DEL.1
+			return nil, true, nil
+		}
+
 		// the key was found below this node and deleted,
 		// make a new extension node pointing to its replacement.
+		// Transition EN.DEL.2
 		en.next = replacementChild
+		en.hash = nil
+		return en, true, nil
 	}
 	return en, found, err
 }
