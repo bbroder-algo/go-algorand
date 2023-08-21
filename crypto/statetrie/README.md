@@ -1,4 +1,25 @@
 
+***Trie operation and usage:***
+
+Tries are initialized against a backing store (a memory one will be constructed if not 
+provided by the user).
+
+```
+mt := MakeTrie(nil)
+key1 := []byte{0x08, 0x0e, 0x02, 0x08}
+val2 := []byte{0x08, 0x09, 0x0a, 0x0c}
+mt.Add(key1, key2)
+fmt.Println("K1 Hash:". mt.Hash())
+mt.Add(key2, key2)
+fmt.Println("K1,K2 Hash:". mt.Hash())
+mt.Delete(key2, key2)
+fmt.Println("K1 Hash:". mt.Hash())
+```
+
+The trie provides a SHA-512/256 checksum at the root.  The trie is a 16(nibble)-ary 
+trie.  Keys are maintained as `nibbles` slices with pack and unpack methods that
+compress them into 8-byte data slices with a half/full ending bit.
+
 ***Trie transitions during Add operation:***
 
 An add results in a group of one or more trie transitions from a group of 25.
@@ -15,17 +36,18 @@ LN.7: Replace the leaf node with a second new branch node in front of the new br
 LN.8: Replace the leaf node with the branch node created earlier.
 
 Atomic operations sets (1 + 2x2 + 2x2x2 = 13 operation sets):
-  (1) LN.1
+
+  * LN.1
 
   This updates the existing node with a new value, deleting the old value.
   
     
-  (2) LN.2|LN.3 then LN.4|LN.5 
+  * LN.2|LN.3 then LN.4|LN.5 
 
   This accomodates both the old and new values remaining in the trie,
   adding either 2 or 3 nodes (1 branch and 1 or 2 leaves)
 
-  (3) LN.2|LN.3 then LN.4|LN.5 then LN.6|LN.7
+  * LN.2|LN.3 then LN.4|LN.5 then LN.6|LN.7
 
   This accomodates both the old and new values remaining in the trie,
   and a shared extension, adding either 3 or 4 nodes (1 branch and 1
@@ -44,12 +66,12 @@ EN.7: Replace the extension node with the branch node created earlier.
 
 Atomic operation sets (1 + 2x2 + 2x2 = 9 operation sets) :
 
-  EN1
+  * EN1
 
   This redirects the extension node to a new/existing node resulting from performing the 
   add operation on the extension child.
 
-  EN2|EN3 then EN4|EN5 then EN6
+  * EN2|EN3 then EN4|EN5 then EN6
 
   This stores the current extension node child in either a new branch node child
   slot or by creating a new extension node at a new key pointing at the child, and
@@ -57,7 +79,7 @@ Atomic operation sets (1 + 2x2 + 2x2 = 9 operation sets) :
   leaf node with the new value or has its value slot assigned, and another extension 
   node is created to replace it pointed at the branch node as its target.
 
-  EN2|EN3 then EN4|EN5 then EN7
+  * EN2|EN3 then EN4|EN5 then EN7
 
   Same as above, only the new branch node replaceds the existing extension node  
   outright, without the additional extension node.
@@ -71,15 +93,53 @@ BN.3: Repoint a child slot at a (possibly new or existing) node resulting from p
 
 Atomic operation sets (1 + 1 + 1 = 3 operation sets) :
 
-  BN.1
+  * BN.1
 
   This overwrites the branch node slot value.
 
-  BN.2
+  * BN.2
 
   This stores a new leaf node in a child slot.
 
-  BN.3
+  * BN.3
 
   This repoints the child node to a new/existing node resulting from performing
   the add operation on the child node.
+
+***Trie child and merge operations:***
+
+Child tries are represented as tries with unexplored node references ("parent nodes") back 
+to unmodified parts of the parent trie. 
+
+Obtaining a child trie from a trie allows the user to easily dispose of stacks of changes 
+to a parent trie at an arbitrary time.
+
+Parent tries must be read-only until after the child is disregared or after it is merged back
+into the parent.
+
+The merge operation stitches the references into the parent trie and sets the parent root
+to the child root.  Node deletion list are propagated into the parent to be handled by a 
+future parent backstore commit.
+
+***Backing stores:***
+
+Backing stores are kv stores which maintain the mapping between trie keys and node
+serialization data.  
+
+Backing stores must "set" byte data containing serialized nodes, and "get" nodes back
+from the store by deserializing them into trie nodes that (may) contain deferred 
+references to further backing store nodes.  The simplest backing store is a golang 
+map from byte slices to nodes, and uses the provided node serialization / deserialization 
+utilites.  
+
+`BatchStart()` is called before any store operations are begun, and `BatchEnd()` is 
+called after there are no more, to allow for batch commits. 
+
+Committing the trie to the backing store will trigger hashing of the trie, if it is
+modified since the last hashing operation.
+
+***Preloading:***
+
+Normally only part of the trie is kept in memory.  However, the trie can sweep all nodes 
+out of the backstore and into memory by calling `preload`. 
+
