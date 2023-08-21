@@ -59,7 +59,7 @@ func (bn *branchNode) add(mt *Trie, pathKey nibbles, remainingKey nibbles, value
 	if len(remainingKey) == 0 {
 		// If we're here, then set the value hash in this node, overwriting the old one.
 		bn.valueHash = valueHash
-		// transition BN.1
+		// transition BN.ADD.1
 		bn.hash = nil
 		return bn, nil
 	}
@@ -72,7 +72,7 @@ func (bn *branchNode) add(mt *Trie, pathKey nibbles, remainingKey nibbles, value
 		lnKey := pathKey[:]
 		lnKey = append(lnKey, slot)
 
-		// transition BN.2
+		// transition BN.ADD.2
 		bn.hash = nil
 		bn.children[slot] = makeLeafNode(shifted, valueHash, lnKey)
 		mt.addNode(bn.children[slot])
@@ -83,7 +83,7 @@ func (bn *branchNode) add(mt *Trie, pathKey nibbles, remainingKey nibbles, value
 			return nil, err
 		}
 		bn.hash = nil
-		// transition BN.3
+		// transition BN.ADD.3
 		bn.children[slot] = replacement
 	}
 
@@ -139,7 +139,6 @@ func (bn *branchNode) delete(mt *Trie, pathKey nibbles, remainingKey nibbles) (n
 	lnKey = append(lnKey, remainingKey[0])
 	replacement, found, err := bn.children[remainingKey[0]].delete(mt, lnKey, shifted)
 	if found && err == nil {
-		// transition BN.DEL.4
 		bn.hash = nil
 		bn.children[remainingKey[0]] = replacement
 
@@ -148,14 +147,9 @@ func (bn *branchNode) delete(mt *Trie, pathKey nibbles, remainingKey nibbles) (n
 		var onlyIndex int
 		for i := 0; i < 16; i++ {
 			if bn.children[i] != nil {
-				if only == nil && hasValueHash {
-					// more than one child (a child and the value slot).  no need to continue.
-					// transition BN.DEL.5
-					return bn, true, nil
-				}
-				if only != nil {
-					// more than one child.  no need to continue.
-					// transition BN.DEL.6
+				if only == nil && hasValueHash || only != nil {
+					// more than one child (two children or a child and the value slot).  no need to continue.
+					// transition BN.DEL.4
 					return bn, true, nil
 				}
 				only = bn.children[i]
@@ -164,18 +158,18 @@ func (bn *branchNode) delete(mt *Trie, pathKey nibbles, remainingKey nibbles) (n
 		}
 		if only == nil && hasValueHash {
 			// only the value slot. replace this branch with a leaf.
-			// transition BN.DEL.7
+			// transition BN.DEL.5
 			ln := makeLeafNode(nibbles{}, bn.valueHash, bn.key)
 			mt.addNode(ln)
 			return ln, true, nil
 		}
 		if only != nil {
 			// only one child.  replace this branch with the raised child.
-			// transition BN.DEL.8
+			// transition BN.DEL.6
 			return only.raise(mt, nibbles{byte(onlyIndex)}, bn.key), true, nil
 		}
 		// no children.  delete this branch.
-		// transition BN.DEL.9
+		// transition BN.DEL.7
 		mt.delNode(bn)
 		return nil, true, nil
 	}

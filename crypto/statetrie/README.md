@@ -31,21 +31,20 @@ An add results in a group of one or more trie transitions from a group of 25.
 
 **Leaf nodes**
 
-LN.1: Store the new value in the existing leaf node, overwriting it.
-LN.2: Store the existing leaf value in a new branch node value space.
-LN.3: Store the existing leaf value in a new leaf node attached to a new branch node.
-LN.4: Store the new value in the new branch node value space.
-LN.5: Store the new value in a new leaf node attached to the new branch node.
-LN.6: Replace the leaf node with a new extention node in front of the new branch node.
-LN.7: Replace the leaf node with a second new branch node in front of the new branch node.
-LN.8: Replace the leaf node with the branch node created earlier.
+LN.ADD.1: Store the new value in the existing leaf node, overwriting it.
+LN.ADD.2: Store the existing leaf value in a new branch node value space.
+LN.ADD.3: Store the existing leaf value in a new leaf node attached to a new branch node.
+LN.ADD.4: Store the new value in the new branch node value space.
+LN.ADD.5: Store the new value in a new leaf node attached to the new branch node.
+LN.ADD.6: Replace the leaf node with a new extention node in front of the new branch node.
+LN.ADD.7: Replace the leaf node with a second new branch node in front of the new branch node.
+LN.ADD.8: Replace the leaf node with the branch node created earlier.
 
 Operation sets (1 + 2x2 + 2x2x2 = 13 sets):
 
   * LN.1
 
   This updates the existing node with a new value, deleting the old value.
-  
     
   * LN.2|LN.3 then LN.4|LN.5 
 
@@ -60,14 +59,14 @@ Operation sets (1 + 2x2 + 2x2x2 = 13 sets):
 
 **Extension nodes**
 
-EN.1: Point the existing extension node at a (possibly new or existing) node resulting
-      from performing the add operation on the child node.
-EN.2: Create an extension node for the current child and store it in a new branch node child slot.
-EN.3: Store the existing extension node child in a new branch node child slot.
-EN.4: Store the new value in a new leaf node stored in an available child slot of the new branch node.
-EN.5: Store the new value in the value slot of the new branch node.
-EN.6: Modify the existing extension node shared key and point the child at the new branch node.
-EN.7: Replace the extension node with the branch node created earlier.
+EN.ADD.1: Point the existing extension node at a (possibly new or existing) node resulting
+          from performing the add operation on the child node.
+EN.ADD.2: Create an extension node for the current child and store it in a new branch node child slot.
+EN.ADD.3: Store the existing extension node child in a new branch node child slot.
+EN.ADD.4: Store the new value in a new leaf node stored in an available child slot of the new branch node.
+EN.ADD.5: Store the new value in the value slot of the new branch node.
+EN.ADD.6: Modify the existing extension node shared key and point the child at the new branch node.
+EN.ADD.7: Replace the extension node with the branch node created earlier.
 
 Operation sets (1 + 2x2 + 2x2 = 9 sets) :
 
@@ -91,22 +90,19 @@ Operation sets (1 + 2x2 + 2x2 = 9 sets) :
 
 **Branch nodes:**
 
-BN.1: Store the new value in the branch node value slot.
-BN.2: Make a new leaf node with the new value, and point an available branch child slot at it.
-BN.3: Repoint a child slot at a (possibly new or existing) node resulting from performing
-      the add operation on the child.
+Three operational transitions:
 
-Operation sets (1 + 1 + 1 = 3 sets) :
+  * BN.ADD.1
 
-  * BN.1
+  Store the new value in the branch node value slot. This overwrites the branch 
+  node slot value.
 
-  This overwrites the branch node slot value.
+  * BN.ADD.2
 
-  * BN.2
-
+  Make a new leaf node with the new value, and point an available branch child slot at it.
   This stores a new leaf node in a child slot.
 
-  * BN.3
+  * BN.ADD.3
 
   This repoints the child node to a new/existing node resulting from performing
   the add operation on the child node.
@@ -123,40 +119,7 @@ A delete results in a group of one or more trie transitions from a group of 6.
   a branch or extension node are replaced with nil.  The node is added to the trie's
   list of deleted keys for later backstore commit.
 
-**Branch nodes**
-
-BN.DEL.1: Empty the value in the branch node value space.
-BN.DEL.2: Delete the branch node.
-BN.DEL.3: Repoint a child slot at a (possibly new or existing) node 
-          resulting from performing the delete operation on the child.
-BN.DEL.4: Replace the node with the child.
-
-Operation sets (1 + 1 + 1 = 3 sets):
-
-  * BN.DEL.1
-
-  Copy the empty hash into the value slot, there are more than one children,
-  mark the node for rehashing.
-   
-  * BN.DEL.2
-
-  Delete the branch node, as the delete removed the value slot and there are no 
-  children.  Add it to the list of the trie's deleted nodes for backstore commit.
-
-  * BN.DEL.3
-
-  Replace the child slot with a new node, as the delete key was found in the child
-  subtrie.  Mark the node for rehashing.
-
-  * BN.DEL.4
-
 **Extension nodes**
-
-EN.DEL.1: Delete this node.
-EN.DEL.2: Repoint a child slot at a (possibly new or existing) node 
-          resulting from performing the delete operation on the child.
-
-Operation sets (1 + 1 = 2 sets)
 
   * EN.DEL.1
 
@@ -165,9 +128,45 @@ Operation sets (1 + 1 = 2 sets)
 
   * EN.DEL.2
 
-  The extension node is now pointing at a new child as a result of finding the
-  key in the lower subtrie.  Mark the node for rehashing.
+  Raise up the results of the successful deletion operation on the extension node child 
+  to replace the existing node (possibly with another extension nodes, as branches 
+  are raised up the trie by placing extension nodes in front of them)
 
+
+**Branch nodes**
+
+  One of the following three operations:
+
+  * BN.DEL.1
+
+  Copy the empty hash into the value slot, mark the node for rehashing.
+   
+  * BN.DEL.2
+
+  Raise up the only child left to replace the branch node.
+
+  * BN.DEL.3
+
+  Delete the childless and valueless branch node.  Add it to the trie's list of
+  deleted keys for later backstore commit.
+
+  * BN.DEL.4
+
+  Replace the child slot with a new node created by deleting the node lower in the trie 
+  Mark for rehashing.
+
+  * BN.DEL.5 
+
+  Replace the branch node with a leaf node valued by the branch node value slot.
+
+  * BN.DEL.6
+
+  Replace the branch node with the only child left raised up a nibble.
+
+  * BN.DEL.7
+
+  Delete the childless and valueless branch node.  Add it to the trie's list of
+  deleted keys for later backstore commit.
 
 ***Trie child and merge operations:***
 
