@@ -1,3 +1,19 @@
+// Copyright (C) 2019-2023 Algorand, Inc.
+// This file is part of go-algorand
+//
+// go-algorand is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Affero General Public License as
+// published by the Free Software Foundation, either version 3 of the
+// License, or (at your option) any later version.
+//
+// go-algorand is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU Affero General Public License for more details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with go-algorand.  If not, see <https://www.gnu.org/licenses/>.
+
 // Copyright (C) 2019-2024 Algorand, Inc.
 // This file is part of go-algorand
 //
@@ -241,22 +257,23 @@ func addKeysNoopEvict(mt *Trie, accounts int, totalBatches int, keyLength int, p
 		if !skipCommit {
 			mt.Commit()
 		}
-		shouldEvict := func(n node) bool {
-			if _, ok := n.(*branchNode); ok {
-				bn := n.(*branchNode)
-				for i := 0; i < 16; i++ {
-					if _, ok2 := bn.children[i].(*branchNode); ok2 {
-						return false
-					}
-				}
-				if rand.Intn(10) == 1 {
-					return false
-				}
-			}
-			return false
-		}
-		fmt.Println("Evicting")
-		mt.root.evict(shouldEvict)
+
+//        shouldEvict := func(n node) bool {
+//			if _, ok := n.(*branchNode); ok {
+//				bn := n.(*branchNode)
+//				for i := 0; i < 16; i++ {
+//					if _, ok2 := bn.children[i].(*branchNode); ok2 {
+//						return false
+//					}
+//				}
+//				if rand.Intn(10) == 1 {
+//					return false
+//				}
+//			}
+//			return false
+//		}
+//		fmt.Println("Evicting")
+//		mt.root.evict(shouldEvict)
 
 		epochEnd := time.Now().Truncate(time.Millisecond)
 		timeConsumed := epochEnd.Sub(epochStart)
@@ -295,6 +312,7 @@ func TestTrieAdd10Batches250kIntoPebbleTest(t *testing.T) { // nolint:parallelte
 func TestTrieOriginalAddFrom2MiBInMem(t *testing.T) { // nolint:paralleltest // Serial tests for trie for the moment
 	// partitiontest.PartitionTest(t)
 	// t.Parallel()
+    fmt.Println(t.Name())
 	back := makePebbleBackstoreVFS()
 	mt := MakeTrie(back)
 	addKeysNoopEvict(mt, 1_048_576*2, 5, 32, 1_048_576*2, false, 250_000)
@@ -303,6 +321,7 @@ func TestTrieOriginalAddFrom2MiBInMem(t *testing.T) { // nolint:paralleltest // 
 func TestTrieOriginalAddFrom2MiBDisk(t *testing.T) { // nolint:paralleltest // Serial tests for trie for the moment
 	// partitiontest.PartitionTest(t)
 	// t.Parallel()
+    fmt.Println(t.Name())
 	back := makePebbleBackstoreDisk("pebble.test", true)
 	mt := MakeTrie(back)
 	addKeysNoopEvict(mt, 1_048_576*2, 5, 32, 1_048_576*2, false, 250_000)
