@@ -34,9 +34,9 @@ type node interface {
 	hashingCommit(store backing) error
 	merge(mt *Trie)
 	serialize() ([]byte, error)
+	preload(store backing) node
 	evict(func(node) bool)
 	lambda(func(node))
-	fullLambda(backing, func(node))
 }
 
 // First byte of a committed node indicates the type of node.

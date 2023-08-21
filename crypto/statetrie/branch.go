@@ -210,13 +210,14 @@ func (bn *branchNode) evict(eviction func(node) bool) {
 		}
 	}
 }
-func (bn *branchNode) fullLambda(store backing, l func(node)) {
-	l(bn)
+func (bn *branchNode) preload(store backing) node {
 	for i := 0; i < 16; i++ {
 		if bn.children[i] != nil {
-			bn.children[i].fullLambda(store, l)
+			bn.children[i] = bn.children[i].preload(store)
+			bn.children[i].preload(store)
 		}
 	}
+	return bn
 }
 func (bn *branchNode) lambda(l func(node)) {
 	l(bn)

@@ -37,8 +37,8 @@ func makeLeafNode(keyEnd nibbles, valueHash crypto.Digest, key nibbles) *leafNod
 func (ln *leafNode) lambda(l func(node)) {
 	l(ln)
 }
-func (ln *leafNode) fullLambda(store backing, l func(node)) {
-	l(ln)
+func (ln *leafNode) preload(store backing) node {
+	return ln
 }
 
 func (ln *leafNode) merge(mt *Trie) {}

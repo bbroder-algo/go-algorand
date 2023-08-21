@@ -208,8 +208,8 @@ func addKeysNoopEvict(mt *Trie, accounts int, totalBatches int, keyLength int, p
 			accts = append(accts, k)
 		}
 
-		if m%(accounts/10) == (accounts/10)-1 {
-			fmt.Printf("Prepopulated with %d accounts (%4.2f %%)\n", m, float64(m)/float64(accounts)*100)
+		if m%(prepopulateCount/10) == (prepopulateCount/10)-1 {
+			fmt.Printf("Prepopulated with %d accounts (%4.2f %%)\n", m, float64(m)/float64(prepopulateCount)*100)
 		}
 	}
 	if !skipCommit {
@@ -262,38 +262,26 @@ func addKeysNoopEvict(mt *Trie, accounts int, totalBatches int, keyLength int, p
 		timeConsumed := epochEnd.Sub(epochStart)
 		fmt.Println(mt.countNodes())
 		fmt.Println("time", timeConsumed, "new hash:", mt.root.getHash(), stats.String(), "len(mt.dels):", len(mt.dels))
-		fmt.Printf("%x\n", mt.root.getHash())
-
 	}
 	fmt.Println("Done", batchSize, ", accounts", accounts, ", totalBatches", totalBatches, ", total keys:", totalBatches*batchSize, ")")
 }
 
-func TestTrieRealisticDisk(t *testing.T) { // nolint:paralleltest // Serial tests for trie for the moment
-	// partitiontest.PartitionTest(t)
-	// t.Parallel()
-	back := makePebbleBackstoreDisk("pebble2db", true)
-	mt := MakeTrie(back)
-	addKeysNoopEvict(mt, 1_048_576*64, 5, 32, 1.00, false, 250_000)
-	back.close()
-}
-func skipTestTrieReloadFromDisk(t *testing.T) { // nolint:paralleltest // Serial tests for trie for the moment
-	// partitiontest.PartitionTest(t)
-	// t.Parallel()
-
-	//    back := makePebbleBackstoreDisk("pebble2db", true)
-	//    mt := MakeTrie(back)
-	hash := []byte{0x50, 0x52, 0x4c, 0x57, 0x50, 0x4a, 0x59, 0x59, 0x5a, 0x37, 0x45, 0x46, 0x58, 0x57, 0x55, 0x57, 0x43, 0x37, 0x32, 0x52, 0x59, 0x50, 0x56, 0x41, 0x41, 0x44, 0x5a, 0x58, 0x43, 0x51, 0x4f, 0x32, 0x42, 0x32, 0x59, 0x52, 0x52, 0x4f, 0x4e, 0x48, 0x42, 0x36, 0x4e, 0x37, 0x4a, 0x4e, 0x47, 0x46, 0x4a, 0x57, 0x54, 0x51}
-	bob := crypto.Digest(hash)
-	fmt.Println(bob)
-	//    addKeysNoopEvict(mt, 1_048_576*1, 5, 32, 0.00, false, 0.005)
-
-}
 func TestTrieBobInMem(t *testing.T) { // nolint:paralleltest // Serial tests for trie for the moment
 	// partitiontest.PartitionTest(t)
 	// t.Parallel()
 	back := makePebbleBackstoreVFS()
 	mt := MakeTrie(back)
-	addKeysNoopEvict(mt, 1_048_576*2, 20, 64, 1_048_576, false, 250_000)
+	addKeysNoopEvict(mt, 1_024, 20, 64, 1_048_576, false, 250_000)
+	back.close()
+}
+func TestTrieAdd10Batches250kIntoPreloadPebbleTest(t *testing.T) { // nolint:paralleltest // Serial tests for trie for the moment
+	// partitiontest.PartitionTest(t)
+	// t.Parallel()
+	back := makePebbleBackstoreDisk("pebble.test", false)
+	mt := MakeTrie(back)
+	fmt.Println("Preloading")
+	mt.root.preload(back)
+	addKeysNoopEvict(mt, 250_000, 10, 64, 0, false, 250_000)
 	back.close()
 }
 func TestTrieAdd10Batches250kIntoPebbleTest(t *testing.T) { // nolint:paralleltest // Serial tests for trie for the moment
@@ -301,9 +289,34 @@ func TestTrieAdd10Batches250kIntoPebbleTest(t *testing.T) { // nolint:parallelte
 	// t.Parallel()
 	back := makePebbleBackstoreDisk("pebble.test", false)
 	mt := MakeTrie(back)
-	addKeysNoopEvict(mt, 1_048_576, 10, 64, 0, false, 250_000)
+	addKeysNoopEvict(mt, 250_000, 10, 64, 0, false, 250_000)
 	back.close()
 }
+func TestTrieOriginalAddFrom2MiBInMem(t *testing.T) { // nolint:paralleltest // Serial tests for trie for the moment
+	// partitiontest.PartitionTest(t)
+	// t.Parallel()
+	back := makePebbleBackstoreVFS()
+	mt := MakeTrie(back)
+	addKeysNoopEvict(mt, 1_048_576*2, 5, 32, 1_048_576*2, false, 250_000)
+	back.close()
+}
+func TestTrieOriginalAddFrom2MiBDisk(t *testing.T) { // nolint:paralleltest // Serial tests for trie for the moment
+	// partitiontest.PartitionTest(t)
+	// t.Parallel()
+	back := makePebbleBackstoreDisk("pebble.test", true)
+	mt := MakeTrie(back)
+	addKeysNoopEvict(mt, 1_048_576*2, 5, 32, 1_048_576*2, false, 250_000)
+	back.close()
+}
+func TestTrieCreate16MiBDisk(t *testing.T) { // nolint:paralleltest // Serial tests for trie for the moment
+	// partitiontest.PartitionTest(t)
+	// t.Parallel()
+	back := makePebbleBackstoreDisk("pebble.test", true)
+	mt := MakeTrie(back)
+	addKeysNoopEvict(mt, 1_048_576*16, 0, 32, 1_048_576*16, false, 250_000)
+	back.close()
+}
+
 func TestTrieAddFrom1MiBDisk(t *testing.T) { // nolint:paralleltest // Serial tests for trie for the moment
 	// partitiontest.PartitionTest(t)
 	// t.Parallel()
@@ -328,12 +341,7 @@ func TestTrieAddFrom1MiB(t *testing.T) { // nolint:paralleltest // Serial tests 
 	addKeysNoopEvict(mt, 1_048_576*1, 5, 32, 1_048_576*1, false, 104_857)
 	back.close()
 }
-func TestCountDBNodes(t *testing.T) { // nolint:paralleltest // Serial tests for trie for the moment
-	// partitiontest.PartitionTest(t)
-	// t.Parallel()
-	//	back := makePebbleBackstoreDisk("pebble.2648983", false)
-	back := makePebbleBackstoreDisk("pebble.test", false)
-	mt := MakeTrie(back)
+func countDBNodes(store backing, mt *Trie) {
 	var nc struct {
 		branches int
 		leaves   int
@@ -353,15 +361,23 @@ func TestCountDBNodes(t *testing.T) { // nolint:paralleltest // Serial tests for
 		return innerCount
 	}()
 
+	fmt.Println("Preloading tree")
+	mt.root.preload(store)
 	fmt.Println("Counting nodes")
-	mt.root.fullLambda(back, l)
+	mt.root.lambda(l)
 	fmt.Println("Branches", nc.branches)
 	fmt.Println("Leaves", nc.leaves)
 	fmt.Println("Exts", nc.exts)
 	fmt.Println("Total", nc.branches+nc.leaves+nc.exts)
+}
+func TestCountDBNodes(t *testing.T) { // nolint:paralleltest // Serial tests for trie for the moment
+	// partitiontest.PartitionTest(t)
+	// t.Parallel()
+	//	back := makePebbleBackstoreDisk("pebble.2648983", false)
+	back := makePebbleBackstoreDisk("pebble.test", false)
+	mt := MakeTrie(back)
+	countDBNodes(back, mt)
 	back.close()
-	// addKeysNoopEvict(mt, 1_048_576*1, 5, 32, 0, false, 104_857)
-	// back.close()
 }
 
 func makebacking(cd crypto.Digest) node {

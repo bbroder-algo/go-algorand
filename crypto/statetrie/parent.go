@@ -43,8 +43,8 @@ func (pa *parent) hashing() error {
 	return pa.p.hashing()
 }
 func (pa *parent) evict(eviction func(node) bool) {}
-func (pa *parent) fullLambda(store backing, l func(node)) {
-	pa.p.fullLambda(store, l)
+func (pa *parent) preload(store backing) node {
+	return pa.p
 }
 func (pa *parent) lambda(l func(node)) {
 	l(pa)

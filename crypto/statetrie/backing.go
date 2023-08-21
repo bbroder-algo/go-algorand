@@ -53,8 +53,8 @@ func (ba *backingNode) hashing() error {
 	return nil
 }
 func (ba *backingNode) evict(eviction func(node) bool) {}
-func (ba *backingNode) fullLambda(store backing, l func(node)) {
-	store.get(ba.key).fullLambda(store, l)
+func (ba *backingNode) preload(store backing) node {
+	return store.get(ba.key)
 }
 func (ba *backingNode) lambda(l func(node)) {
 	l(ba)
