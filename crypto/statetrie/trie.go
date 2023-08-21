@@ -101,21 +101,21 @@ func (mt *Trie) Delete(key nibbles) (bool, error) {
 	return found, err
 }
 
-// RootHash provides the root hash for this trie
-func (mt *Trie) RootHash() (crypto.Digest, error) {
+// Hash provides the root hash for this trie
+func (mt *Trie) Hash() crypto.Digest {
 	if mt.root == nil {
-		return crypto.Digest{}, nil
+		return crypto.Digest{}
 	}
 	if mt.root.getHash() != nil {
-		return *(mt.root.getHash()), nil
+		return *(mt.root.getHash())
 	}
 
 	err := mt.root.hashing()
 	if err != nil {
-		return crypto.Digest{}, err
+		panic(err)
 	}
 
-	return *(mt.root.getHash()), nil
+	return *(mt.root.getHash())
 }
 
 // Child creates a child trie, which can be merged back into the parent
@@ -130,6 +130,9 @@ func (mt *Trie) Child() *Trie {
 
 // Merge merges the child trie back into the parent
 func (mt *Trie) Merge() {
+	if mt.parent == nil {
+		return
+	}
 	if mt.root != nil {
 		mt.root.merge(mt)
 		mt.parent.root = mt.root

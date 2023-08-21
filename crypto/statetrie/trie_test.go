@@ -56,6 +56,161 @@ func pseudoRand() uint32 {
 	return x
 }
 
+func TestTrieChildMerge(t *testing.T) { // nolint:paralleltest // Serial tests for trie for the moment
+	// partitiontest.PartitionTest(t)
+	// t.Parallel()
+	fmt.Println(t.Name())
+
+	mt := MakeTrie(makePebbleBackstoreVFS())
+	key1 := []byte{0x08, 0x0e, 0x02, 0x08}
+	key2 := []byte{0x08, 0x09, 0x0a, 0x0c}
+	key3 := []byte{0x08, 0x09, 0x0a, 0x00}
+	key4 := []byte{0x03, 0x0c, 0x04, 0x0c}
+	key5 := []byte{0x08, 0x09, 0x03, 0x0c}
+
+	mt.Add(key1, key2)
+	fmt.Println("Hash:", mt.Hash(), " K1")
+	H1 := mt.Hash()
+	mt.Add(key2, key3)
+	fmt.Println("Hash:", mt.Hash(), " K1 K2")
+	H1H2 := mt.Hash()
+	mt.Add(key3, key4)
+	fmt.Println("Hash:", mt.Hash(), " K1 K2 K3")
+	H1H2H3 := mt.Hash()
+	mt.Add(key4, key5)
+	fmt.Println("Hash:", mt.Hash(), " K1 K2 K3 K4")
+	H1H2H3H4 := mt.Hash()
+	mt.Add(key5, key1)
+	fmt.Println("Hash:", mt.Hash(), " K1 K2 k3 K4 K5")
+	H1H2H3H4H5 := mt.Hash()
+	mt.root = nil
+
+	fmt.Println("Add key1")
+	mt.Add(key1, key2)
+	require.Equal(t, H1, mt.Hash())
+	fmt.Println("Hash:", mt.Hash())
+	fmt.Println("Making child.. child = mt.Child")
+	ch := mt.Child()
+	require.Equal(t, H1, mt.Hash())
+	require.Equal(t, H1, ch.Hash())
+	fmt.Println("Child Hash:", ch.Hash())
+	fmt.Println("Parent Hash:", mt.Hash())
+	fmt.Println("Add key2 to Child")
+	ch.Add(key2, key3)
+	require.Equal(t, H1, mt.Hash())
+	require.Equal(t, H1H2, ch.Hash())
+	fmt.Println("Child Hash:", ch.Hash())
+	fmt.Println("Parent Hash:", mt.Hash())
+	fmt.Println("Merge...")
+	ch.Merge()
+	require.Equal(t, H1H2, mt.Hash())
+	require.Equal(t, H1H2, ch.Hash())
+	fmt.Println("Child Hash:", ch.Hash())
+	fmt.Println("Parent Hash:", mt.Hash())
+	fmt.Println("Add key3 to child")
+	ch.Add(key3, key4)
+	require.Equal(t, H1H2, mt.Hash())
+	require.Equal(t, H1H2H3, ch.Hash())
+	fmt.Println("Child Hash:", ch.Hash())
+	fmt.Println("Parent Hash:", mt.Hash())
+	fmt.Println("Add key4 to child")
+	ch.Add(key4, key5)
+	require.Equal(t, H1H2, mt.Hash())
+	require.Equal(t, H1H2H3H4, ch.Hash())
+	fmt.Println("Child Hash:", ch.Hash())
+	fmt.Println("Parent Hash:", mt.Hash())
+	fmt.Println("Add key5 to child")
+	ch.Add(key5, key1)
+	require.Equal(t, H1H2, mt.Hash())
+	require.Equal(t, H1H2H3H4H5, ch.Hash())
+	fmt.Println("Child Hash:", ch.Hash())
+	fmt.Println("Parent Hash:", mt.Hash())
+	fmt.Println("Merge...")
+	ch.Merge()
+	require.Equal(t, H1H2H3H4H5, mt.Hash())
+	require.Equal(t, H1H2H3H4H5, ch.Hash())
+	fmt.Println("Child Hash:", ch.Hash())
+	fmt.Println("Parent Hash:", mt.Hash())
+
+	fmt.Println("....")
+	mt.root = nil
+	fmt.Println("Add key1")
+	mt.Add(key1, key2)
+	require.Equal(t, H1, mt.Hash())
+	fmt.Println("Hash:", mt.Hash())
+	fmt.Println("Making child.. ch = mt.Child")
+	ch = mt.Child()
+	require.Equal(t, H1, mt.Hash())
+	require.Equal(t, H1, ch.Hash())
+	fmt.Println("Child Hash:", ch.Hash())
+	fmt.Println("Parent Hash:", mt.Hash())
+	fmt.Println("Add key2 to Child")
+	ch.Add(key2, key3)
+	require.Equal(t, H1, mt.Hash())
+	require.Equal(t, H1H2, ch.Hash())
+	fmt.Println("Child Hash:", ch.Hash())
+	fmt.Println("Parent Hash:", mt.Hash())
+	fmt.Println("Merge...")
+	ch.Merge()
+	require.Equal(t, H1H2, mt.Hash())
+	require.Equal(t, H1H2, ch.Hash())
+	fmt.Println("Child Hash:", ch.Hash())
+	fmt.Println("Parent Hash:", mt.Hash())
+	fmt.Println("Add key3 to child")
+	ch.Add(key3, key4)
+	require.Equal(t, H1H2, mt.Hash())
+	require.Equal(t, H1H2H3, ch.Hash())
+	fmt.Println("Child Hash:", ch.Hash())
+	fmt.Println("Parent Hash:", mt.Hash())
+	fmt.Println("Making child2.. child2 = ch.Child")
+	ch2 := ch.Child()
+	require.Equal(t, H1H2, mt.Hash())
+	require.Equal(t, H1H2H3, ch.Hash())
+	require.Equal(t, H1H2H3, ch2.Hash())
+	fmt.Println("Child Hash:", ch.Hash())
+	fmt.Println("Child2 Hash:", ch2.Hash())
+	fmt.Println("Parent Hash:", mt.Hash())
+	fmt.Println("Add key4 to child2")
+	ch2.Add(key4, key5)
+	require.Equal(t, H1H2, mt.Hash())
+	require.Equal(t, H1H2H3, ch.Hash())
+	require.Equal(t, H1H2H3H4, ch2.Hash())
+	fmt.Println("Child Hash:", ch.Hash())
+	fmt.Println("Child2 Hash:", ch2.Hash())
+	fmt.Println("Parent Hash:", mt.Hash())
+	fmt.Println("Add key5 to child2")
+	ch2.Add(key5, key1)
+	require.Equal(t, H1H2, mt.Hash())
+	require.Equal(t, H1H2H3, ch.Hash())
+	require.Equal(t, H1H2H3H4H5, ch2.Hash())
+	fmt.Println("Child Hash:", ch.Hash())
+	fmt.Println("Child2 Hash:", ch2.Hash())
+	fmt.Println("Parent Hash:", mt.Hash())
+	fmt.Println("Merge child 2...")
+	ch2.Merge()
+	require.Equal(t, H1H2, mt.Hash())
+	require.Equal(t, H1H2H3H4H5, ch.Hash())
+	require.Equal(t, H1H2H3H4H5, ch2.Hash())
+	fmt.Println("Child Hash:", ch.Hash())
+	fmt.Println("Child2 Hash:", ch2.Hash())
+	fmt.Println("Parent Hash:", mt.Hash())
+	fmt.Println("Merge child 1...")
+	ch.Merge()
+	require.Equal(t, H1H2H3H4H5, mt.Hash())
+	require.Equal(t, H1H2H3H4H5, ch.Hash())
+	require.Equal(t, H1H2H3H4H5, ch2.Hash())
+	fmt.Println("Child Hash:", ch.Hash())
+	fmt.Println("Child2 Hash:", ch2.Hash())
+	fmt.Println("Parent Hash:", mt.Hash())
+	mt.Commit()
+	require.Equal(t, H1H2H3H4H5, mt.Hash())
+	require.Equal(t, H1H2H3H4H5, ch.Hash())
+	require.Equal(t, H1H2H3H4H5, ch2.Hash())
+	fmt.Println("Child Hash:", ch.Hash())
+	fmt.Println("Parent Hash:", mt.Hash())
+	fmt.Println("Child2 Hash:", ch2.Hash())
+}
+
 func TestTrieSpecial(t *testing.T) { // nolint:paralleltest // Serial tests for trie for the moment
 	// partitiontest.PartitionTest(t)
 	// t.Parallel()
@@ -258,22 +413,22 @@ func addKeysNoopEvict(mt *Trie, accounts int, totalBatches int, keyLength int, p
 			mt.Commit()
 		}
 
-//        shouldEvict := func(n node) bool {
-//			if _, ok := n.(*branchNode); ok {
-//				bn := n.(*branchNode)
-//				for i := 0; i < 16; i++ {
-//					if _, ok2 := bn.children[i].(*branchNode); ok2 {
-//						return false
-//					}
-//				}
-//				if rand.Intn(10) == 1 {
-//					return false
-//				}
-//			}
-//			return false
-//		}
-//		fmt.Println("Evicting")
-//		mt.root.evict(shouldEvict)
+		//        shouldEvict := func(n node) bool {
+		//			if _, ok := n.(*branchNode); ok {
+		//				bn := n.(*branchNode)
+		//				for i := 0; i < 16; i++ {
+		//					if _, ok2 := bn.children[i].(*branchNode); ok2 {
+		//						return false
+		//					}
+		//				}
+		//				if rand.Intn(10) == 1 {
+		//					return false
+		//				}
+		//			}
+		//			return false
+		//		}
+		//		fmt.Println("Evicting")
+		//		mt.root.evict(shouldEvict)
 
 		epochEnd := time.Now().Truncate(time.Millisecond)
 		timeConsumed := epochEnd.Sub(epochStart)
@@ -312,7 +467,7 @@ func TestTrieAdd10Batches250kIntoPebbleTest(t *testing.T) { // nolint:parallelte
 func TestTrieOriginalAddFrom2MiBInMem(t *testing.T) { // nolint:paralleltest // Serial tests for trie for the moment
 	// partitiontest.PartitionTest(t)
 	// t.Parallel()
-    fmt.Println(t.Name())
+	fmt.Println(t.Name())
 	back := makePebbleBackstoreVFS()
 	mt := MakeTrie(back)
 	addKeysNoopEvict(mt, 1_048_576*2, 5, 32, 1_048_576*2, false, 250_000)
@@ -321,7 +476,7 @@ func TestTrieOriginalAddFrom2MiBInMem(t *testing.T) { // nolint:paralleltest // 
 func TestTrieOriginalAddFrom2MiBDisk(t *testing.T) { // nolint:paralleltest // Serial tests for trie for the moment
 	// partitiontest.PartitionTest(t)
 	// t.Parallel()
-    fmt.Println(t.Name())
+	fmt.Println(t.Name())
 	back := makePebbleBackstoreDisk("pebble.test", true)
 	mt := MakeTrie(back)
 	addKeysNoopEvict(mt, 1_048_576*2, 5, 32, 1_048_576*2, false, 250_000)

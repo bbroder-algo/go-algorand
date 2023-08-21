@@ -147,6 +147,10 @@ func (ln *leafNode) hashingCommit(store backing) error {
 			*ln.hash = crypto.Hash(bytes)
 		}
 		if store != nil {
+			stats.dbsets++
+			if debugTrie {
+				fmt.Printf("db.set ln key %x %v\n", ln.getKey(), ln)
+			}
 			err := store.set(ln.getKey(), bytes)
 			if err != nil {
 				return err

@@ -158,11 +158,11 @@ func (en *extensionNode) hashingCommit(store backing) error {
 			en.hash = new(crypto.Digest)
 			*en.hash = crypto.Hash(bytes)
 		}
-		stats.dbsets++
-		if debugTrie {
-			fmt.Printf("db.set en key %x %v\n", en.getKey(), en)
-		}
 		if store != nil {
+			stats.dbsets++
+			if debugTrie {
+				fmt.Printf("db.set en key %x %v\n", en.getKey(), en)
+			}
 			err = store.set(en.getKey(), bytes)
 			if err != nil {
 				return err

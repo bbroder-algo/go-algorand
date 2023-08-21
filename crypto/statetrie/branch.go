@@ -73,6 +73,7 @@ func (bn *branchNode) add(mt *Trie, pathKey nibbles, remainingKey nibbles, value
 		lnKey = append(lnKey, slot)
 
 		// transition BN.2
+		bn.hash = nil
 		bn.children[slot] = makeLeafNode(shifted, valueHash, lnKey)
 		mt.addNode(bn.children[slot])
 	} else {
@@ -115,6 +116,7 @@ func (bn *branchNode) delete(mt *Trie, pathKey nibbles, remainingKey nibbles) (n
 	lnKey = append(lnKey, remainingKey[0])
 	replacementChild, found, err := bn.children[remainingKey[0]].delete(mt, lnKey, shifted)
 	if found && err == nil {
+		bn.hash = nil
 		bn.children[remainingKey[0]] = replacementChild
 	}
 	return bn, found, err
@@ -137,12 +139,11 @@ func (bn *branchNode) hashingCommit(store backing) error {
 		bn.hash = new(crypto.Digest)
 		*bn.hash = crypto.Hash(bytes)
 
-		stats.dbsets++
-		if debugTrie {
-			fmt.Printf("db.set bn key %x dbkey %v\n", bn.getKey(), bn)
-		}
-
 		if store != nil {
+			stats.dbsets++
+			if debugTrie {
+				fmt.Printf("db.set bn key %x %v\n", bn.getKey(), bn)
+			}
 			err = store.set(bn.getKey(), bytes)
 			if err != nil {
 				return err
