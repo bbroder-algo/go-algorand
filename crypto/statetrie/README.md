@@ -31,14 +31,14 @@ An add results in a group of one or more trie transitions from a group of 25.
 
 **Leaf nodes**
 
-LN.ADD.1: Store the new value in the existing leaf node, overwriting it.
-LN.ADD.2: Store the existing leaf value in a new branch node value space.
-LN.ADD.3: Store the existing leaf value in a new leaf node attached to a new branch node.
-LN.ADD.4: Store the new value in the new branch node value space.
-LN.ADD.5: Store the new value in a new leaf node attached to the new branch node.
-LN.ADD.6: Replace the leaf node with a new extention node in front of the new branch node.
-LN.ADD.7: Replace the leaf node with a second new branch node in front of the new branch node.
-LN.ADD.8: Replace the leaf node with the branch node created earlier.
+*LN.ADD.1: Store the new value in the existing leaf node, overwriting it.
+*LN.ADD.2: Store the existing leaf value in a new branch node value space.
+*LN.ADD.3: Store the existing leaf value in a new leaf node attached to a new branch node.
+*LN.ADD.4: Store the new value in the new branch node value space.
+*LN.ADD.5: Store the new value in a new leaf node attached to the new branch node.
+*LN.ADD.6: Replace the leaf node with a new extention node in front of the new branch node.
+*LN.ADD.7: Replace the leaf node with a second new branch node in front of the new branch node.
+*LN.ADD.8: Replace the leaf node with the branch node created earlier.
 
 Operation sets (1 + 2x2 + 2x2x2 = 13 sets):
 
@@ -59,14 +59,14 @@ Operation sets (1 + 2x2 + 2x2x2 = 13 sets):
 
 **Extension nodes**
 
-EN.ADD.1: Point the existing extension node at a (possibly new or existing) node resulting
+*EN.ADD.1: Point the existing extension node at a (possibly new or existing) node resulting
           from performing the add operation on the child node.
-EN.ADD.2: Create an extension node for the current child and store it in a new branch node child slot.
-EN.ADD.3: Store the existing extension node child in a new branch node child slot.
-EN.ADD.4: Store the new value in a new leaf node stored in an available child slot of the new branch node.
-EN.ADD.5: Store the new value in the value slot of the new branch node.
-EN.ADD.6: Modify the existing extension node shared key and point the child at the new branch node.
-EN.ADD.7: Replace the extension node with the branch node created earlier.
+*EN.ADD.2: Create an extension node for the current child and store it in a new branch node child slot.
+*EN.ADD.3: Store the existing extension node child in a new branch node child slot.
+*EN.ADD.4: Store the new value in a new leaf node stored in an available child slot of the new branch node.
+*EN.ADD.5: Store the new value in the value slot of the new branch node.
+*EN.ADD.6: Modify the existing extension node shared key and point the child at the new branch node.
+*EN.ADD.7: Replace the extension node with the branch node created earlier.
 
 Operation sets (1 + 2x2 + 2x2 = 9 sets) :
 
