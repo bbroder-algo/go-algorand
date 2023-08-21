@@ -14,22 +14,6 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with go-algorand.  If not, see <https://www.gnu.org/licenses/>.
 
-// Copyright (C) 2019-2024 Algorand, Inc.
-// This file is part of go-algorand
-//
-// go-algorand is free software: you can redistribute it and/or modify
-// it under the terms of the GNU Affero General Public License as
-// published by the Free Software Foundation, either version 3 of the
-// License, or (at your option) any later version.
-//
-// go-algorand is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-// GNU Affero General Public License for more details.
-//
-// You should have received a copy of the GNU Affero General Public License
-// along with go-algorand.  If not, see <https://www.gnu.org/licenses/>.
-
 package statetrie
 
 import (
@@ -55,6 +39,130 @@ func pseudoRand() uint32 {
 	x ^= x >> 17
 	x ^= x << 5
 	return x
+}
+func reset(mt *Trie) {
+	mt.root = nil
+	mt.dels = make(map[string]bool)
+}
+
+func TestTrieDelete(t *testing.T) { // nolint:paralleltest // Serial tests for trie for the moment
+	partitiontest.PartitionTest(t)
+	// t.Parallel()
+	fmt.Println(t.Name())
+
+	mt := MakeTrie(makePebbleBackstoreVFS())
+	key1 := []byte{0x08, 0x0e, 0x02, 0x08}
+	key2 := []byte{0x08, 0x09, 0x0a, 0x0c}
+	key3 := []byte{0x08, 0x09, 0x0a, 0x00}
+	key4 := []byte{0x03, 0x0c, 0x04, 0x0c}
+	key5 := []byte{0x08, 0x09, 0x03, 0x0c}
+
+	mt.Add(key1, key2)
+	fmt.Println("Hash:", mt.Hash(), " K1")
+	H1 := mt.Hash()
+	mt.Add(key2, key3)
+	fmt.Println("Hash:", mt.Hash(), " K1 K2")
+	H1H2 := mt.Hash()
+	mt.Add(key3, key4)
+	fmt.Println("Hash:", mt.Hash(), " K1 K2 K3")
+	H1H2H3 := mt.Hash()
+	mt.Add(key4, key5)
+	fmt.Println("Hash:", mt.Hash(), " K1 K2 K3 K4")
+	H1H2H3H4 := mt.Hash()
+	//	mt.Add(key5, key1)
+	//	fmt.Println("Hash:", mt.Hash(), " K0 K2 k3 K4 K5")
+	//	H1H2H3H4H5 := mt.Hash()
+	reset(mt)
+
+	mt.Add(key1, key2)
+	mt.Add(key2, key3)
+	mt.Add(key3, key4)
+	mt.Add(key4, key5)
+	mt.Delete(key2)
+	fmt.Println("Hash:", mt.Hash(), " K1 K2 K3 K4 D2")
+	H1H2H3H4D2 := mt.Hash()
+	mt.Delete(key1)
+	H1H2H3H4D2D1 := mt.Hash()
+	fmt.Println("Hash:", mt.Hash(), " K1 K2 K3 K4 D2 D1")
+	reset(mt)
+	mt.Add(key1, key2)
+	mt.Add(key3, key4)
+	mt.Add(key4, key5)
+	fmt.Println("Hash:", mt.Hash(), " K1 K3 K4")
+	require.NotEqual(t, H1H2H3H4, H1H2H3H4D2)
+
+	reset(mt)
+	fmt.Println("mt", countNodes(mt))
+	fmt.Println("Add key1")
+	mt.Add(key1, key2)
+	require.Equal(t, H1, mt.Hash())
+	fmt.Println("Hash:", mt.Hash())
+	fmt.Println("mt", countNodes(mt))
+	fmt.Println("Making child.. child = mt.Child")
+	ch := mt.Child()
+	require.Equal(t, H1, mt.Hash())
+	fmt.Println("mt", countNodes(mt))
+	require.Equal(t, H1, ch.Hash())
+	fmt.Println("ch", countNodes(ch))
+
+	fmt.Println("Child Hash:", ch.Hash())
+	fmt.Println("ch", countNodes(ch))
+	fmt.Println("Parent Hash:", mt.Hash())
+	fmt.Println("mt", countNodes(mt))
+
+	fmt.Println("Add key2 to Child")
+	ch.Add(key2, key3)
+	require.Equal(t, H1, mt.Hash())
+	require.Equal(t, H1H2, ch.Hash())
+
+	fmt.Println("Child Hash:", ch.Hash())
+	fmt.Println("ch", countNodes(ch))
+	fmt.Println("Parent Hash:", mt.Hash())
+	fmt.Println("mt", countNodes(mt))
+
+	fmt.Println("Merge...")
+	ch.Merge()
+	require.Equal(t, H1H2, mt.Hash())
+	require.Equal(t, H1H2, ch.Hash())
+
+	fmt.Println("Child Hash:", ch.Hash())
+	fmt.Println("ch", countNodes(ch))
+	fmt.Println("Parent Hash:", mt.Hash())
+	fmt.Println("mt", countNodes(mt))
+
+	fmt.Println("Add key3 to child")
+	ch.Add(key3, key4)
+	require.Equal(t, H1H2, mt.Hash())
+	require.Equal(t, H1H2H3, ch.Hash())
+
+	fmt.Println("Child Hash:", ch.Hash())
+	fmt.Println("ch", countNodes(ch))
+	fmt.Println("Parent Hash:", mt.Hash())
+	fmt.Println("mt", countNodes(mt))
+
+	fmt.Println("Add key4 to child")
+	ch.Add(key4, key5)
+	require.Equal(t, H1H2, mt.Hash())
+	require.Equal(t, H1H2H3H4, ch.Hash())
+	fmt.Println("Child Hash:", ch.Hash())
+	fmt.Println("ch", countNodes(ch))
+	fmt.Println("Parent Hash:", mt.Hash())
+	fmt.Println("mt", countNodes(mt))
+	fmt.Println("Del key2 from child")
+	ch.Delete(key2)
+	fmt.Println("ch", countNodes(ch))
+	fmt.Println("mt", countNodes(mt))
+	fmt.Println("Child Hash:", ch.Hash())
+	fmt.Println("Parent Hash:", mt.Hash())
+	require.Equal(t, H1H2, mt.Hash())
+	require.Equal(t, H1H2H3H4D2, ch.Hash())
+	fmt.Println("Merge...")
+	ch.Merge()
+	fmt.Println("Child Hash:", ch.Hash())
+	fmt.Println("Parent Hash:", mt.Hash())
+	mt.Delete(key1)
+	fmt.Println("Parent Hash:", mt.Hash())
+	require.Equal(t, H1H2H3H4D2D1, mt.Hash())
 }
 
 func TestTrieChildMerge(t *testing.T) { // nolint:paralleltest // Serial tests for trie for the moment
@@ -84,7 +192,7 @@ func TestTrieChildMerge(t *testing.T) { // nolint:paralleltest // Serial tests f
 	mt.Add(key5, key1)
 	fmt.Println("Hash:", mt.Hash(), " K1 K2 k3 K4 K5")
 	H1H2H3H4H5 := mt.Hash()
-	mt.root = nil
+	reset(mt)
 
 	fmt.Println("Add key1")
 	mt.Add(key1, key2)
@@ -134,7 +242,7 @@ func TestTrieChildMerge(t *testing.T) { // nolint:paralleltest // Serial tests f
 	fmt.Println("Parent Hash:", mt.Hash())
 
 	fmt.Println("....")
-	mt.root = nil
+	reset(mt)
 	fmt.Println("Add key1")
 	mt.Add(key1, key2)
 	require.Equal(t, H1, mt.Hash())
@@ -363,7 +471,7 @@ func BenchmarkTrieAddFrom1MiB32InMem250(b *testing.B) {
 func addKeysNoopEvict(mt *Trie, accounts int, totalBatches int, keyLength int, prepopulateCount int, skipCommit bool, batchSize int) {
 	var accts [][]byte
 	fmt.Println("Prepopulating the trie with ", prepopulateCount, " accounts")
-	fmt.Println(mt.countNodes())
+	fmt.Println("mt", (mt))
 
 	acctsNeededForBatch := int(math.Min(float64(accounts), math.Min(float64(batchSize*totalBatches), float64(accounts))))
 
@@ -399,7 +507,7 @@ func addKeysNoopEvict(mt *Trie, accounts int, totalBatches int, keyLength int, p
 		}
 	}
 
-	fmt.Println(mt.countNodes())
+	fmt.Println("mt", (mt))
 	fmt.Println("Adding keys (batch size", batchSize, ", accounts", accounts, ", totalBatches", totalBatches, ", total keys:", totalBatches*batchSize, ")")
 	for m := 0; m < totalBatches; m++ {
 
@@ -433,7 +541,7 @@ func addKeysNoopEvict(mt *Trie, accounts int, totalBatches int, keyLength int, p
 
 		epochEnd := time.Now().Truncate(time.Millisecond)
 		timeConsumed := epochEnd.Sub(epochStart)
-		fmt.Println(mt.countNodes())
+		fmt.Println("mt", (mt))
 		fmt.Println("time", timeConsumed, "new hash:", mt.root.getHash(), stats.String(), "len(mt.dels):", len(mt.dels))
 	}
 	fmt.Println("Done", batchSize, ", accounts", accounts, ", totalBatches", totalBatches, ", total keys:", totalBatches*batchSize, ")")
@@ -662,7 +770,7 @@ func XTestNodeSerialization(t *testing.T) {
 }
 
 func buildDotGraph(t *testing.T, mt *Trie, keys [][]byte, values [][]byte, fn string) {
-	dot := mt.DotGraph(keys, values)
+	dot := dotGraph(mt, keys, values)
 	file, err := os.Create(fn)
 	require.NoError(t, err)
 	defer file.Close()
@@ -969,4 +1077,134 @@ func TestNibbleUtilities(t *testing.T) { // nolint:paralleltest // Serial tests 
 	require.True(t, bytes.Equal(shiftNibbles(sampleNibbles[0], -2), sampleNibbles[0]))
 	require.True(t, bytes.Equal(shiftNibbles(sampleNibbles[0], -1), sampleNibbles[0]))
 	require.True(t, bytes.Equal(shiftNibbles(sampleNibbles[0], 0), sampleNibbles[0]))
+}
+
+// DotGraph returns a dot graph of the trie
+func dotGraph(mt *Trie, keysAdded [][]byte, valuesAdded [][]byte) string {
+	var keys string
+	for i := 0; i < len(keysAdded); i++ {
+		keys += fmt.Sprintf("%x = %x\\n", keysAdded[i], valuesAdded[i])
+	}
+	fmt.Printf("root: %v\n", mt.root)
+	return fmt.Sprintf("digraph trie { key [shape=box, label=\"key/value inserted:\\n%s\"];\n %s }\n", keys, dotGraphHelper(mt, mt.root, nibbles{}))
+}
+
+// dot graph generation helper
+func dotGraphHelper(mt *Trie, n node, path nibbles) string {
+
+	switch tn := n.(type) {
+	case *backingNode:
+		return dotGraphHelper(mt, mt.store.get(path), path)
+	case *parent:
+		return dotGraphHelper(mt, tn.p, path)
+	case *leafNode:
+		ln := tn
+		return fmt.Sprintf("n%p [label=\"leaf\\nkeyEnd:%x\\nvalueHash:%s\" shape=box];\n", tn, ln.keyEnd, ln.valueHash)
+	case *extensionNode:
+		en := tn
+		return fmt.Sprintf("n%p [label=\"extension\\nshKey:%x\" shape=box];\n", tn, en.sharedKey) +
+			fmt.Sprintf("n%p -> n%p;\n", en, en.next) +
+			dotGraphHelper(mt, en.next, append(path, en.sharedKey...))
+	case *branchNode:
+		bn := tn
+		var indexesFilled string
+		indexesFilled = "--"
+		for i, ch := range bn.children {
+			if ch != nil {
+				indexesFilled += fmt.Sprintf("%x ", i)
+			}
+		}
+		indexesFilled += "--"
+
+		s := fmt.Sprintf("n%p [label=\"branch\\nindexesFilled:%s\\nvalueHash:%s\" shape=box];\n", tn, indexesFilled, bn.valueHash)
+		for _, child := range bn.children {
+			if child != nil {
+				s += fmt.Sprintf("n%p -> n%p;\n", tn, child)
+			}
+		}
+		for childrenIndex, ch := range bn.children {
+			if ch != nil {
+				s += dotGraphHelper(mt, ch, append(path, byte(childrenIndex)))
+			}
+		}
+		return s
+	default:
+		return ""
+	}
+}
+
+//	returns a string with the number of nodes in the trie but
+//
+// does not follow parent nodes or load backing nodes
+func countNodes(mt *Trie) string {
+	if mt.root == nil {
+		return "Empty trie"
+	}
+	var nc struct {
+		branches int
+		leaves   int
+		exts     int
+		parents  int
+		backings int
+		values   int
+	}
+
+	count := func() func(n node) {
+		innerCount := func(n node) {
+			switch n.(type) {
+			case *branchNode:
+				nc.branches++
+				bn := n.(*branchNode)
+				if bn.valueHash != (crypto.Digest{}) {
+					nc.values++
+				}
+			case *leafNode:
+				nc.values++
+				nc.leaves++
+			case *extensionNode:
+				nc.exts++
+			case *parent:
+				nc.parents++
+			case *backingNode:
+				nc.backings++
+			}
+		}
+		return innerCount
+	}()
+	mt.root.lambda(count)
+
+	var nmem struct {
+		branches int
+		leaves   int
+		exts     int
+		parents  int
+		backings int
+	}
+
+	mem := func() func(n node) {
+		innerCount := func(n node) {
+			switch v := n.(type) {
+			//estimates
+			case *branchNode:
+				nmem.branches += 16*16 + 32 + 24 + len(v.key) + 8 + 32
+			case *leafNode:
+				nmem.leaves += 24 + len(v.key) + 24 + len(v.keyEnd) + 32 + 8 + 32
+			case *extensionNode:
+				nmem.exts += 24 + len(v.key) + 24 + len(v.sharedKey) + 8 + 32
+			case *parent:
+				nmem.parents += 8
+			case *backingNode:
+				nmem.backings += len(v.key) + 8 + 32
+			}
+		}
+		return innerCount
+	}()
+	mt.root.lambda(mem)
+
+	return fmt.Sprintf("[nodes: total %d / valued %d (branches: %d, leaves: %d, exts: %d, parents: %d, backings: %d), mem: total %d (branches: %d, leaves: %d, exts: %d, parents: %d, backings: %d), len(dels):%d]",
+		nc.branches+nc.leaves+nc.exts+nc.parents, nc.values,
+		nc.branches, nc.leaves, nc.exts, nc.parents, nc.backings,
+		nmem.branches+nmem.leaves+nmem.exts+nmem.parents,
+		nmem.branches, nmem.leaves, nmem.exts, nmem.parents, nmem.backings, len(mt.dels))
+
 }
