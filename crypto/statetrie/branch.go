@@ -147,7 +147,7 @@ func (bn *branchNode) delete(mt *Trie, pathKey nibbles, remainingKey nibbles) (n
 		var onlyIndex int
 		for i := 0; i < 16; i++ {
 			if bn.children[i] != nil {
-				if only == nil && hasValueHash || only != nil {
+				if (only != nil) || (only == nil && hasValueHash) {
 					// more than one child (two children or a child and the value slot).  no need to continue.
 					// transition BN.DEL.4
 					return bn, true, nil
