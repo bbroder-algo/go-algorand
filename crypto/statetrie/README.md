@@ -1,8 +1,44 @@
 
+****State trie****
+
+The state trie, commonly known as a prefix tree, is a tree-like data structure
+used for storing an associative array where the keys are sequences of 4-bit
+bytes and the values are SHA-512/256 hashes of the key values.  A proof can be
+provided to the user to show membership of a key value by showing its hash
+provides the necessary missing value to hash to the known root hash.
+
+The trie operates on 'nibbles', which are sequences of 4 bits. This allows for
+a more compact representation compared to standard binary tries and smaller
+proofs.
+
+This trie has built-in support for backing stores, which are essential for
+persistent data storage. It is designed to work seamlessly with both in-memory
+and disk-based storage solutions.
+
+***Key Features:***
+
+Hashing: The trie provides a SHA-512/256 checksum at its root, ensuring data
+integrity.
+
+Adding and removing key/value pairs: Through specific operations, users can
+efficiently add new key-value pairs to the trie or remove existing ones. The
+trie ensures consistent state transitions and optimal space usage during these
+operations.
+
+Child and Merge Operations: The trie supports operations to manage child tries,
+enabling the creation, discard, and merge actions for subtries.
+
+Backstore commit: The trie supports committing changes to the trie to a backing
+store that fuctions like a batched kv interface.
+
+Preloading: Though the trie is designed to keep only parts of it in memory for
+efficiency, it offers a preloading feature to sweep all nodes out of the
+backstore and into memory if required.
+
 ***Trie operation and usage:***
 
-Tries are initialized against a backing store (a memory one will be constructed if not 
-provided by the user).
+Tries are initialized against a backing store (a memory one will be constructed
+if not provided by the user).
 
 ```
 mt := MakeTrie(nil)
@@ -19,11 +55,114 @@ fmt.Println("K1:V1,K2:V2 Hash:", mt.Hash())
 
 mt.Delete(key2)
 fmt.Println("K1:V1 Hash:", mt.Hash())
+
+mt.Commit()
 ```
 
-The trie provides a SHA-512/256 checksum at the root.  The trie is a 16(nibble)-ary 
-trie.  Keys are maintained as `nibbles` slices with pack and unpack methods that
-compress them into 8-byte data slices with a half/full ending bit.
+The trie provides a SHA-512/256 checksum at the root.  The trie is a
+16(nibble)-ary trie.  Keys are maintained as `nibbles` slices with pack and
+unpack methods that compress them into 8-byte data slices with a half/full
+ending bit.
+
+***Trie nodes:***
+
+There are six possible trie nodes.  Any of the node types can be the root of a
+trie.  Only the first three are committed to the backing store. 
+
+**Leaf nodes**
+
+This value-holding nodes contain the remainder of the search key (the `keyEnd`)
+and the hash of the value.
+
+**Branch nodes**
+
+Branch nodes hold references to 16 children nodes indexed by the next nibble 
+of the search key, plut a "value slot" to hold values for keys th
+at terminate at the branch node. 
+
+**Extension nodes**
+
+Extension nodes contain an addition run of commonly shared key nibbles that
+send you along to the next node.  No value is held at an extension node.
+
+**Parent nodes**
+
+These nodes are soft-links back to a node in a parent trie from a child trie.
+They are expanded into copies of their links if the node is edited or replaced
+in an add or delete operation.
+
+**Backing nodes**
+
+These nodes are soft links back to a node in the backing store.  They are
+expanded into one of the three main nodes if the node is read.
+
+***Trie expansion from initalization:**
+
+When initializing the trie, the backing store is queried using an empty nibble
+key. The response from the backing store is then deserialized and positioned at
+the trie's root. If the root node contains references to child nodes (whether
+as children in branches or subsequent nodes in an extension), these are
+constructed as backing store nodes within the trie. In the absence of such
+references, the root node remains nil. Add Operations:
+
+When adding a new entry, the trie undergoes a traversal, reaching the final
+leaf node where the value hash is to be inserted. Throughout this traversal,
+any encountered backing store nodes or parent nodes are promoted. This means
+they're transformed into one of the trie's primary node types. This promotion
+ensures that the trie maintains its structural and operational integrity as new
+entries are integrated. Child Trie Handling:
+
+When a child trie is initialized, it's anchored to its parent by setting its
+root node as a parent node that points back to the parent trie's root.
+Accessing this child trie for add or delete operations involves converting
+these parent nodes into full-fledged trie nodes. This conversion happens by
+copying the original parent node and then modifying or replacing it as required
+by the specific trie operation in question. 
+
+***Trie child and merge operations:***
+
+Child tries are represented as tries with unexplored node references ("parent
+nodes") that point back to unmodified parts of the parent trie. 
+
+Obtaining a child trie from a trie allows the user to easily dispose of stacks
+of changes to a parent trie at an arbitrary time.
+
+Parent tries must remain read-only until after the child is disregared or until
+after it is merged back into the parent.
+
+When merging child tries back into their parents, the trie undergoes a
+traversal. This search aims to identify parent nodes, which are then replaced
+with their original references, effectively stitching the child trie's
+modifications into the parent trie. 
+
+Node deletion list are propagated into the parent to be handled by a future
+parent backstore commit.
+
+This mechanism ensures that the trie remains dynamic and efficient, capable of
+expanding from the backstore when necessary while also maintaining the ability
+to handle modifications through child tries.
+
+***Backing stores:***
+
+Backing stores are kv stores which maintain the mapping between trie keys and
+node serialization data.  
+
+Backing stores must "set" byte data containing serialized nodes, and "get"
+nodes back from the store by deserializing them into trie nodes that (may)
+contain deferred references to further backing store nodes.  The simplest
+backing store is a golang map from byte slices to nodes, and uses the provided
+node serialization / deserialization utilites.  
+
+`BatchStart()` is called before any store operations are begun, and
+`BatchEnd()` is called after there are no more, to allow for batch commits. 
+
+Committing the trie to the backing store will trigger hashing of the trie, if
+it is modified since the last hashing operation.
+
+***Preloading:***
+
+Normally only part of the trie is kept in memory.  However, the trie can sweep
+all nodes out of the backstore and into memory by calling `preload`. 
 
 ***Trie transitions during Add operation:***
 
@@ -85,20 +224,21 @@ Operation sets (1 + 2x2 + 2x2 = 9 sets) :
 
   * EN1
 
-  This redirects the extension node to a new/existing node resulting from performing the 
-  add operation on the extension child.
+  This redirects the extension node to a new/existing node resulting from
+  performing the add operation on the extension child.
 
   * EN2|EN3 then EN4|EN5 then EN6
 
-  This stores the current extension node child in either a new branch node child
-  slot or by creating a new extension node at a new key pointing at the child, and
-  attaching that to a new branch node.  Either way, the new branch node also receives a new
-  leaf node with the new value or has its value slot assigned, and another extension 
-  node is created to replace it pointed at the branch node as its target.
+  This stores the current extension node child in either a new branch node
+  child slot or by creating a new extension node at a new key pointing at the
+  child, and attaching that to a new branch node.  Either way, the new branch
+  node also receives a new leaf node with the new value or has its value slot
+  assigned, and another extension node is created to replace it pointed at the
+  branch node as its target.
 
   * EN2|EN3 then EN4|EN5 then EN7
 
-  Same as above, only the new branch node replaceds the existing extension node  
+  Same as above, only the new branch node replaceds the existing extension node
   outright, without the additional extension node.
 
 **Branch nodes:**
@@ -107,13 +247,13 @@ Three operational transitions:
 
   * BN.ADD.1
 
-  Store the new value in the branch node value slot. This overwrites the branch 
+  Store the new value in the branch node value slot. This overwrites the branch
   node slot value.
 
   * BN.ADD.2
 
-  Make a new leaf node with the new value, and point an available branch child slot at it.
-  This stores a new leaf node in a child slot.
+  Make a new leaf node with the new value, and point an available branch child
+  slot at it. This stores a new leaf node in a child slot.
 
   * BN.ADD.3
 
@@ -128,9 +268,9 @@ A delete results in a group of one or more trie transitions from a group of 6.
 
   * LN.DEL.1
 
-  Delete this leaf node that matches the delete key.  Pointers to this node from
-  a branch or extension node are replaced with nil.  The node is added to the trie's
-  list of deleted keys for later backstore commit.
+  Delete this leaf node that matches the delete key.  Pointers to this node
+  from a branch or extension node are replaced with nil.  The node is added to
+  the trie's list of deleted keys for later backstore commit.
 
 **Extension nodes**
 
@@ -141,10 +281,10 @@ A delete results in a group of one or more trie transitions from a group of 6.
 
   * EN.DEL.2
 
-  Raise up the results of the successful deletion operation on the extension node child 
-  to replace the existing node (possibly with another extension nodes, as branches 
-  are raised up the trie by placing extension nodes in front of them)
-
+  Raise up the results of the successful deletion operation on the extension
+  node child to replace the existing node (possibly with another extension
+  nodes, as branches are raised up the trie by placing extension nodes in front
+  of them)
 
 **Branch nodes**
 
@@ -180,41 +320,3 @@ A delete results in a group of one or more trie transitions from a group of 6.
 
   Delete the childless and valueless branch node.  Add it to the trie's list of
   deleted keys for later backstore commit.
-
-***Trie child and merge operations:***
-
-Child tries are represented as tries with unexplored node references ("parent nodes") back 
-to unmodified parts of the parent trie. 
-
-Obtaining a child trie from a trie allows the user to easily dispose of stacks of changes 
-to a parent trie at an arbitrary time.
-
-Parent tries must be read-only until after the child is disregared or after it is merged back
-into the parent.
-
-The merge operation stitches the references into the parent trie and sets the parent root
-to the child root.  Node deletion list are propagated into the parent to be handled by a 
-future parent backstore commit.
-
-***Backing stores:***
-
-Backing stores are kv stores which maintain the mapping between trie keys and node
-serialization data.  
-
-Backing stores must "set" byte data containing serialized nodes, and "get" nodes back
-from the store by deserializing them into trie nodes that (may) contain deferred 
-references to further backing store nodes.  The simplest backing store is a golang 
-map from byte slices to nodes, and uses the provided node serialization / deserialization 
-utilites.  
-
-`BatchStart()` is called before any store operations are begun, and `BatchEnd()` is 
-called after there are no more, to allow for batch commits. 
-
-Committing the trie to the backing store will trigger hashing of the trie, if it is
-modified since the last hashing operation.
-
-***Preloading:***
-
-Normally only part of the trie is kept in memory.  However, the trie can sweep all nodes 
-out of the backstore and into memory by calling `preload`. 
-
