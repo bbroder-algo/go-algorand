@@ -113,7 +113,7 @@ Operation sets (1 + 1 + 1 = 3 sets) :
 
 ***Trie transitions during Delete operation:***
 
-A delete results in a group of one or more trie transitions from a group of 25.
+A delete results in a group of one or more trie transitions from a group of 6.
 
 **Leaf nodes**
 
