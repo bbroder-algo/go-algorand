@@ -13,7 +13,7 @@ fmt.Println("K1 Hash:". mt.Hash())
 mt.Add(key2, key2)
 fmt.Println("K1,K2 Hash:". mt.Hash())
 mt.Delete(key2, key2)
-fmt.Println("K1 Hash:". mt.Hash())
+fmt.Println("K1,K2,D2 Hash:". mt.Hash())
 ```
 
 The trie provides a SHA-512/256 checksum at the root.  The trie is a 16(nibble)-ary 
