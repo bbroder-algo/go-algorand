@@ -288,12 +288,20 @@ func skipTestTrieReloadFromDisk(t *testing.T) { // nolint:paralleltest // Serial
 	//    addKeysNoopEvict(mt, 1_048_576*1, 5, 32, 0.00, false, 0.005)
 
 }
-func TestTrieBob(t *testing.T) { // nolint:paralleltest // Serial tests for trie for the moment
+func TestTrieBobInMem(t *testing.T) { // nolint:paralleltest // Serial tests for trie for the moment
 	// partitiontest.PartitionTest(t)
 	// t.Parallel()
-	back := makePebbleBackstoreDisk("pebble2bob", false)
+	back := makePebbleBackstoreVFS()
 	mt := MakeTrie(back)
-	addKeysNoopEvict(mt, 1_048_576*1, 5, 32, 0, false, 104_857)
+	addKeysNoopEvict(mt, 1_048_576*2, 20, 64, 1_048_576, false, 250_000)
+	back.close()
+}
+func TestTrieAdd10Batches250kIntoPebbleTest(t *testing.T) { // nolint:paralleltest // Serial tests for trie for the moment
+	// partitiontest.PartitionTest(t)
+	// t.Parallel()
+	back := makePebbleBackstoreDisk("pebble.test", false)
+	mt := MakeTrie(back)
+	addKeysNoopEvict(mt, 1_048_576, 10, 64, 0, false, 250_000)
 	back.close()
 }
 func TestTrieAddFrom1MiBDisk(t *testing.T) { // nolint:paralleltest // Serial tests for trie for the moment
@@ -319,6 +327,41 @@ func TestTrieAddFrom1MiB(t *testing.T) { // nolint:paralleltest // Serial tests 
 	mt := MakeTrie(back)
 	addKeysNoopEvict(mt, 1_048_576*1, 5, 32, 1_048_576*1, false, 104_857)
 	back.close()
+}
+func TestCountDBNodes(t *testing.T) { // nolint:paralleltest // Serial tests for trie for the moment
+	// partitiontest.PartitionTest(t)
+	// t.Parallel()
+	//	back := makePebbleBackstoreDisk("pebble.2648983", false)
+	back := makePebbleBackstoreDisk("pebble.test", false)
+	mt := MakeTrie(back)
+	var nc struct {
+		branches int
+		leaves   int
+		exts     int
+	}
+	l := func() func(n node) {
+		innerCount := func(n node) {
+			switch n.(type) {
+			case *branchNode:
+				nc.branches++
+			case *leafNode:
+				nc.leaves++
+			case *extensionNode:
+				nc.exts++
+			}
+		}
+		return innerCount
+	}()
+
+	fmt.Println("Counting nodes")
+	mt.root.fullLambda(back, l)
+	fmt.Println("Branches", nc.branches)
+	fmt.Println("Leaves", nc.leaves)
+	fmt.Println("Exts", nc.exts)
+	fmt.Println("Total", nc.branches+nc.leaves+nc.exts)
+	back.close()
+	// addKeysNoopEvict(mt, 1_048_576*1, 5, 32, 0, false, 104_857)
+	// back.close()
 }
 
 func makebacking(cd crypto.Digest) node {

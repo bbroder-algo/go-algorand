@@ -36,6 +36,7 @@ type node interface {
 	serialize() ([]byte, error)
 	evict(func(node) bool)
 	lambda(func(node))
+	fullLambda(backing, func(node))
 }
 
 // First byte of a committed node indicates the type of node.

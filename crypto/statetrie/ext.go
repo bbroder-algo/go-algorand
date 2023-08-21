@@ -221,6 +221,10 @@ func (en *extensionNode) lambda(l func(node)) {
 	l(en)
 	en.next.lambda(l)
 }
+func (en *extensionNode) fullLambda(store backing, l func(node)) {
+	en.lambda(l)
+	en.next.fullLambda(store, l)
+}
 func (en *extensionNode) evict(eviction func(node) bool) {
 	if eviction(en) {
 		fmt.Printf("evicting ext node %x\n", en.getKey())
