@@ -96,7 +96,7 @@ in an add or delete operation.
 These nodes are soft links back to a node in the backing store.  They are
 expanded into one of the three main nodes if the node is read.
 
-***Trie expansion from initalization:**
+***Trie expansion from initalization:***
 
 When initializing the trie, the backing store is queried using an empty nibble
 key. The response from the backing store is then deserialized and positioned at
