@@ -167,7 +167,8 @@ all nodes out of the backstore and into memory by calling `preload`.
 
 ***Trie transitions during Add operation:***
 
-An add results in a group of one or more trie transitions from a group of 25.
+An add results in a group of one or more trie transitions from a group of 25.  These
+transitions are marked in the source with their identifier. 
 
 **Leaf nodes**
 
@@ -207,7 +208,7 @@ Operation sets (1 + 2x2 + 2x2x2 = 13 sets):
 **Extension nodes**
 
 - EN.ADD.1: Point the existing extension node at a (possibly new or existing) node resulting
-          from performing the add operation on the child node.
+            from performing the add operation on the child node.
 
 - EN.ADD.2: Create an extension node for the current child and store it in a new branch node child slot.
 
@@ -246,20 +247,14 @@ Operation sets (1 + 2x2 + 2x2 = 9 sets) :
 
 Three operational transitions:
 
-  * BN.ADD.1
+- BN.ADD.1: Store the new value in the branch node value slot. This overwrites
+  the branch node slot value.
 
-  Store the new value in the branch node value slot. This overwrites the branch
-  node slot value.
+- BN.ADD.2: Make a new leaf node with the new value, and point an available
+  branch child slot at it. This stores a new leaf node in a child slot.
 
-  * BN.ADD.2
-
-  Make a new leaf node with the new value, and point an available branch child
-  slot at it. This stores a new leaf node in a child slot.
-
-  * BN.ADD.3
-
-  This repoints the child node to a new/existing node resulting from performing
-  the add operation on the child node.
+- BN.ADD.3: This repoints the child node to a new/existing node resulting from
+  performing the add operation on the child node.
 
 ***Trie transitions during Delete operation:***
 
@@ -267,57 +262,37 @@ A delete results in a group of one or more trie transitions from a group of 6.
 
 **Leaf nodes**
 
-  * LN.DEL.1
-
-  Delete this leaf node that matches the delete key.  Pointers to this node
-  from a branch or extension node are replaced with nil.  The node is added to
-  the trie's list of deleted keys for later backstore commit.
+- LN.DEL.1: Delete this leaf node that matches the delete key.  Pointers to
+  this node from a branch or extension node are replaced with nil.  The node is
+  added to the trie's list of deleted keys for later backstore commit.
 
 **Extension nodes**
 
-  * EN.DEL.1
+- EN.DEL.1: The extension node can be deleted because the child was deleted
+  after finding the key in the lower subtrie.
 
-  The extension node can be deleted because the child was deleted after finding
-  the key in the lower subtrie.
-
-  * EN.DEL.2
-
-  Raise up the results of the successful deletion operation on the extension
-  node child to replace the existing node (possibly with another extension
-  nodes, as branches are raised up the trie by placing extension nodes in front
-  of them)
+- EN.DEL.2: Raise up the results of the successful deletion operation on the
+  extension node child to replace the existing node (possibly with another
+  extension nodes, as branches are raised up the trie by placing extension
+  nodes in front of them)
 
 **Branch nodes**
 
   One of the following three operations:
 
-  * BN.DEL.1
-
-  Copy the empty hash into the value slot, mark the node for rehashing.
+- BN.DEL.1: Copy the empty hash into the value slot, mark the node for rehashing.
    
-  * BN.DEL.2
+- BN.DEL.2: Raise up the only child left to replace the branch node.
 
-  Raise up the only child left to replace the branch node.
+- BN.DEL.3: Delete the childless and valueless branch node.  Add it to the
+  trie's list of deleted keys for later backstore commit.
 
-  * BN.DEL.3
+- BN.DEL.4: Replace the child slot with a new node created by deleting the node
+  lower in the trie Mark for rehashing.
 
-  Delete the childless and valueless branch node.  Add it to the trie's list of
-  deleted keys for later backstore commit.
+- BN.DEL.5: Replace the branch node with a leaf node valued by the branch node value slot.
 
-  * BN.DEL.4
+- BN.DEL.6: Replace the branch node with the only child left raised up a nibble.
 
-  Replace the child slot with a new node created by deleting the node lower in the trie 
-  Mark for rehashing.
-
-  * BN.DEL.5 
-
-  Replace the branch node with a leaf node valued by the branch node value slot.
-
-  * BN.DEL.6
-
-  Replace the branch node with the only child left raised up a nibble.
-
-  * BN.DEL.7
-
-  Delete the childless and valueless branch node.  Add it to the trie's list of
-  deleted keys for later backstore commit.
+- BN.DEL.7: Delete the childless and valueless branch node.  Add it to the
+  trie's list of deleted keys for later backstore commit.
