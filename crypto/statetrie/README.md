@@ -18,7 +18,7 @@ mt.Add(key2, val2)
 fmt.Println("K1:V1,K2:V2 Hash:", mt.Hash())
 
 mt.Delete(key2)
-fmt.Println("K1:V1,K2:V2,D2 Hash:", mt.Hash())
+fmt.Println("K1:V1 Hash:", mt.Hash())
 ```
 
 The trie provides a SHA-512/256 checksum at the root.  The trie is a 16(nibble)-ary 
@@ -129,13 +129,14 @@ BN.DEL.1: Empty the value in the branch node value space.
 BN.DEL.2: Delete the branch node.
 BN.DEL.3: Repoint a child slot at a (possibly new or existing) node 
           resulting from performing the delete operation on the child.
+BN.DEL.4: Replace the node with the child.
 
 Operation sets (1 + 1 + 1 = 3 sets):
 
   * BN.DEL.1
 
-  Copy the empty hash into the value slot and mark the node for rehashing.
-
+  Copy the empty hash into the value slot, there are more than one children,
+  mark the node for rehashing.
    
   * BN.DEL.2
 
@@ -146,6 +147,8 @@ Operation sets (1 + 1 + 1 = 3 sets):
 
   Replace the child slot with a new node, as the delete key was found in the child
   subtrie.  Mark the node for rehashing.
+
+  * BN.DEL.4
 
 **Extension nodes**
 

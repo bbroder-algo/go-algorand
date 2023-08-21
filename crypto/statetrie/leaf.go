@@ -30,8 +30,21 @@ type leafNode struct {
 
 func makeLeafNode(keyEnd nibbles, valueHash crypto.Digest, key nibbles) *leafNode {
 	stats.makeleaves++
-	ln := &leafNode{keyEnd: keyEnd, valueHash: valueHash, key: make(nibbles, len(key))}
+	ln := &leafNode{keyEnd: make(nibbles, len(keyEnd)), valueHash: valueHash, key: make(nibbles, len(key))}
 	copy(ln.key, key)
+	copy(ln.keyEnd, keyEnd)
+	return ln
+}
+func (ln *leafNode) raise(mt *Trie, prefix nibbles, key nibbles) node {
+	mt.delNode(ln)
+	ke := ln.keyEnd
+	ln.keyEnd = make(nibbles, len(prefix)+len(ln.keyEnd))
+	copy(ln.keyEnd, prefix)
+	copy(ln.keyEnd[len(prefix):], ke)
+	ln.key = make(nibbles, len(key))
+	copy(ln.key, key)
+	ln.hash = nil
+	mt.addNode(ln)
 	return ln
 }
 func (ln *leafNode) lambda(l func(node)) {
@@ -104,7 +117,7 @@ func (ln *leafNode) add(mt *Trie, pathKey nibbles, remainingKey nibbles, valueHa
 	bn2 := makeBranchNode(children, branchHash, bn2key)
 	mt.addNode(bn2)
 
-	if len(shNibbles) >= 2 {
+	if len(shNibbles) >= 1 {
 		// If there was more than one shared nibble, insert an extension node before the branch node.
 		enKey := pathKey[:]
 		en := makeExtensionNode(shNibbles, bn2, enKey)
@@ -112,18 +125,18 @@ func (ln *leafNode) add(mt *Trie, pathKey nibbles, remainingKey nibbles, valueHa
 		// transition LN.6
 		return en, nil
 	}
-	if len(shNibbles) == 1 {
-		// If there is only one shared nibble, we just make a second branch node as opposed to an
-		// extension node with only one shared nibble, the chances are high that we'd have to just
-		// delete that node and replace it with a full branch node soon anyway.
-		var children2 [16]node
-		children2[shNibbles[0]] = bn2
-		bnKey := pathKey[:]
-		bn3 := makeBranchNode(children2, crypto.Digest{}, bnKey)
-		mt.addNode(bn3)
-		// transition LN.7
-		return bn3, nil
-	}
+	//	if len(shNibbles) == 1 {
+	//		// If there is only one shared nibble, we just make a second branch node as opposed to an
+	//		// extension node with only one shared nibble, the chances are high that we'd have to just
+	//		// delete that node and replace it with a full branch node soon anyway.
+	//		var children2 [16]node
+	//		children2[shNibbles[0]] = bn2
+	//		bnKey := pathKey[:]
+	//		bn3 := makeBranchNode(children2, crypto.Digest{}, bnKey)
+	//		mt.addNode(bn3)
+	//		// transition LN.7
+	//		return bn3, nil
+	//	}
 	// There are no shared nibbles anymore, so just return the branch node.
 
 	// transition LN.8

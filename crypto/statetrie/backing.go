@@ -46,6 +46,9 @@ func (ba *backingNode) add(mt *Trie, pathKey nibbles, remainingKey nibbles, valu
 func (ba *backingNode) delete(mt *Trie, pathKey nibbles, remainingKey nibbles) (node, bool, error) {
 	return mt.store.get(pathKey).delete(mt, pathKey, remainingKey)
 }
+func (ba *backingNode) raise(mt *Trie, prefix nibbles, key nibbles) node {
+	return mt.store.get(key).raise(mt, prefix, key)
+}
 func (ba *backingNode) hashingCommit(store backing) error {
 	return nil
 }
@@ -65,7 +68,6 @@ func (ba *backingNode) getKey() nibbles {
 func (ba *backingNode) getHash() *crypto.Digest {
 	return ba.hash
 }
-
 func (ba *backingNode) merge(mt *Trie) {
 	panic("backingNode cannot be merged")
 }

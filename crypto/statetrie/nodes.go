@@ -30,6 +30,7 @@ type node interface {
 	getHash() *crypto.Digest // the hash of the node, if it has been hashed
 	add(mt *Trie, pathKey nibbles, remainingKey nibbles, valueHash crypto.Digest) (node, error)
 	delete(mt *Trie, pathKey nibbles, remainingKey nibbles) (node, bool, error)
+	raise(mt *Trie, prefix nibbles, key nibbles) node
 	hashing() error
 	hashingCommit(store backing) error
 	merge(mt *Trie)

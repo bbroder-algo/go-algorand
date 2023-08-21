@@ -30,8 +30,9 @@ type extensionNode struct {
 
 func makeExtensionNode(sharedKey nibbles, next node, key nibbles) *extensionNode {
 	stats.makeextensions++
-	en := &extensionNode{sharedKey: sharedKey, next: next, key: make(nibbles, len(key))}
+	en := &extensionNode{sharedKey: make(nibbles, len(sharedKey)), next: next, key: make(nibbles, len(key))}
 	copy(en.key, key)
+	copy(en.sharedKey, sharedKey)
 	return en
 }
 func (en *extensionNode) add(mt *Trie, pathKey nibbles, remainingKey nibbles, valueHash crypto.Digest) (node, error) {
@@ -111,6 +112,17 @@ func (en *extensionNode) add(mt *Trie, pathKey nibbles, remainingKey nibbles, va
 	// transition EN.7
 	return replacement, nil
 }
+func (en *extensionNode) raise(mt *Trie, prefix nibbles, key nibbles) node {
+	mt.delNode(en)
+	en.sharedKey = make(nibbles, len(prefix)+len(en.sharedKey))
+	copy(en.sharedKey, prefix)
+	copy(en.sharedKey[len(prefix):], en.sharedKey)
+	en.key = make(nibbles, len(key))
+	copy(en.key, key)
+	mt.addNode(en)
+	en.hash = nil
+	return en
+}
 func (en *extensionNode) delete(mt *Trie, pathKey nibbles, remainingKey nibbles) (node, bool, error) {
 	var err error
 	if len(remainingKey) == 0 {
@@ -125,23 +137,22 @@ func (en *extensionNode) delete(mt *Trie, pathKey nibbles, remainingKey nibbles)
 	shifted := shiftNibbles(remainingKey, len(en.sharedKey))
 	enKey := pathKey[:]
 	enKey = append(enKey, shNibbles...)
-	replacementChild, found, err := en.next.delete(mt, enKey, shifted)
+	replacement, found, err := en.next.delete(mt, enKey, shifted)
 	if found && err == nil {
 		// the key was found below this node and deleted, and there
 		// is no replacement
-		if replacementChild == nil {
+		if replacement == nil {
 			// Transition EN.DEL.1
+			mt.delNode(en)
 			return nil, true, nil
 		}
 
-		// the key was found below this node and deleted,
-		// make a new extension node pointing to its replacement.
+		// the key was found below this node and deleted, and there
+		// is a replacement.  Raise it up to replace this node.
 		// Transition EN.DEL.2
-		en.next = replacementChild
-		en.hash = nil
-		return en, true, nil
+		return replacement.raise(mt, en.sharedKey, pathKey), true, nil
 	}
-	return en, found, err
+	return nil, found, err
 }
 func (en *extensionNode) merge(mt *Trie) {
 	if pa, ok := en.next.(*parent); ok {

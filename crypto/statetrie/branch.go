@@ -89,6 +89,11 @@ func (bn *branchNode) add(mt *Trie, pathKey nibbles, remainingKey nibbles, value
 
 	return bn, nil
 }
+func (bn *branchNode) raise(mt *Trie, prefix nibbles, key nibbles) node {
+	en := makeExtensionNode(prefix, bn, key)
+	mt.addNode(en)
+	return en
+}
 func (bn *branchNode) delete(mt *Trie, pathKey nibbles, remainingKey nibbles) (node, bool, error) {
 	if len(remainingKey) == 0 {
 		if (bn.valueHash == crypto.Digest{}) {
@@ -99,32 +104,83 @@ func (bn *branchNode) delete(mt *Trie, pathKey nibbles, remainingKey nibbles) (n
 		// update the branch node if there are children, or remove it completely.
 		bn.hash = nil
 		bn.valueHash = crypto.Digest{}
+		var only node
+		var onlyIndex int
 		for i := 0; i < 16; i++ {
 			if bn.children[i] != nil {
-				// transition BN.DEL.1
-				return bn, true, nil
+				if only != nil {
+					// more than one child.  no need to continue.
+					// transition BN.DEL.1
+					return bn, true, nil
+				}
+				only = bn.children[i]
+				onlyIndex = i
 			}
 		}
-		// transition BN.DEL.2
+		if only != nil {
+			// only one child.  replace this branch with the child.
+			// transition BN.DEL.2
+			return only.raise(mt, nibbles{byte(onlyIndex)}, bn.key), true, nil
+		}
+		// no children.  delete this branch.
+		// transition BN.DEL.3
 		mt.delNode(bn)
 		return nil, true, nil
 	}
-	// descend into the branch node.
+
+	// if there is no child at this index.  key not found.
 	if bn.children[remainingKey[0]] == nil {
-		// no child at this index.  key not found.
 		return bn, false, nil
 	}
+
+	// descend into the branch node.
 	shifted := shiftNibbles(remainingKey, 1)
 	lnKey := pathKey[:]
 	lnKey = append(lnKey, remainingKey[0])
-	replacementChild, found, err := bn.children[remainingKey[0]].delete(mt, lnKey, shifted)
+	replacement, found, err := bn.children[remainingKey[0]].delete(mt, lnKey, shifted)
 	if found && err == nil {
-		// transition BN.DEL.3
+		// transition BN.DEL.4
 		bn.hash = nil
-		bn.children[remainingKey[0]] = replacementChild
+		bn.children[remainingKey[0]] = replacement
+
+		hasValueHash := bn.valueHash != (crypto.Digest{})
+		var only node
+		var onlyIndex int
+		for i := 0; i < 16; i++ {
+			if bn.children[i] != nil {
+				if only == nil && hasValueHash {
+					// more than one child (a child and the value slot).  no need to continue.
+					// transition BN.DEL.5
+					return bn, true, nil
+				}
+				if only != nil {
+					// more than one child.  no need to continue.
+					// transition BN.DEL.6
+					return bn, true, nil
+				}
+				only = bn.children[i]
+				onlyIndex = i
+			}
+		}
+		if only == nil && hasValueHash {
+			// only the value slot. replace this branch with a leaf.
+			// transition BN.DEL.7
+			ln := makeLeafNode(nibbles{}, bn.valueHash, bn.key)
+			mt.addNode(ln)
+			return ln, true, nil
+		}
+		if only != nil {
+			// only one child.  replace this branch with the raised child.
+			// transition BN.DEL.8
+			return only.raise(mt, nibbles{byte(onlyIndex)}, bn.key), true, nil
+		}
+		// no children.  delete this branch.
+		// transition BN.DEL.9
+		mt.delNode(bn)
+		return nil, true, nil
 	}
-	// returning either false or an error.
-	return bn, found, err
+	// returning either false or an error (or both).
+	return nil, found, err
 }
 func (bn *branchNode) hashingCommit(store backing) error {
 	if bn.hash == nil {

@@ -36,6 +36,9 @@ func (pa *parent) add(mt *Trie, pathKey nibbles, remainingKey nibbles, valueHash
 func (pa *parent) delete(mt *Trie, pathKey nibbles, remainingKey nibbles) (node, bool, error) {
 	return pa.p.child().delete(mt, pathKey, remainingKey)
 }
+func (pa *parent) raise(mt *Trie, prefix nibbles, key nibbles) node {
+	return pa.p.child().raise(mt, prefix, key)
+}
 func (pa *parent) hashingCommit(store backing) error {
 	return pa.p.hashingCommit(store)
 }
