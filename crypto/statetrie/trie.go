@@ -106,15 +106,12 @@ func (mt *Trie) Hash() crypto.Digest {
 	if mt.root == nil {
 		return crypto.Digest{}
 	}
-	if mt.root.getHash() != nil {
-		return *(mt.root.getHash())
+	if mt.root.getHash().IsZero() {
+		err := mt.root.hashing()
+		if err != nil {
+			panic(err)
+		}
 	}
-
-	err := mt.root.hashing()
-	if err != nil {
-		panic(err)
-	}
-
 	return *(mt.root.getHash())
 }
 

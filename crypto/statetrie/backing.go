@@ -31,10 +31,10 @@ type backing interface {
 
 type backingNode struct {
 	key  nibbles
-	hash *crypto.Digest
+	hash crypto.Digest
 }
 
-func makeBackingNode(hash *crypto.Digest, key nibbles) *backingNode {
+func makeBackingNode(hash crypto.Digest, key nibbles) *backingNode {
 	stats.makedbnodes++
 	ba := &backingNode{hash: hash, key: make(nibbles, len(key))}
 	copy(ba.key, key)
@@ -65,8 +65,11 @@ func (ba *backingNode) lambda(l func(node)) {
 func (ba *backingNode) getKey() nibbles {
 	return ba.key
 }
+
+//	func (ba *backingNode) getHash() crypto.Digest {
+//		return ba.hash
 func (ba *backingNode) getHash() *crypto.Digest {
-	return ba.hash
+	return &ba.hash
 }
 func (ba *backingNode) merge(mt *Trie) {
 	panic("backingNode cannot be merged")

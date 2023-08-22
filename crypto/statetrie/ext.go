@@ -25,7 +25,7 @@ type extensionNode struct {
 	sharedKey nibbles
 	next      node
 	key       nibbles
-	hash      *crypto.Digest
+	hash      crypto.Digest
 }
 
 func makeExtensionNode(sharedKey nibbles, next node, key nibbles) *extensionNode {
@@ -47,7 +47,7 @@ func (en *extensionNode) add(mt *Trie, pathKey nibbles, remainingKey nibbles, va
 		}
 		// transition EN.ADD.1
 		en.next = replacement
-		en.hash = nil
+		en.hash = crypto.Digest{}
 		return en, nil
 	}
 
@@ -104,7 +104,7 @@ func (en *extensionNode) add(mt *Trie, pathKey nibbles, remainingKey nibbles, va
 		// and point in to the new branch node
 		en.sharedKey = shNibbles
 		en.next = replacement
-		en.hash = nil
+		en.hash = crypto.Digest{}
 		// transition EN.ADD.6
 		return en, nil
 	}
@@ -120,7 +120,7 @@ func (en *extensionNode) raise(mt *Trie, prefix nibbles, key nibbles) node {
 	en.key = make(nibbles, len(key))
 	copy(en.key, key)
 	mt.addNode(en)
-	en.hash = nil
+	en.hash = crypto.Digest{}
 	return en
 }
 func (en *extensionNode) delete(mt *Trie, pathKey nibbles, remainingKey nibbles) (node, bool, error) {
@@ -166,19 +166,21 @@ func (en *extensionNode) child() node {
 }
 
 func (en *extensionNode) hashingCommit(store backing) error {
-	if en.hash == nil {
-		if en.next.getHash() == nil {
+	if en.hash.IsZero() {
+		if en.next.getHash().IsZero() {
 			err := en.next.hashingCommit(store)
 			if err != nil {
 				return err
 			}
 		}
 		bytes, err := en.serialize()
-		if err == nil {
-			stats.cryptohashes++
-			en.hash = new(crypto.Digest)
-			*en.hash = crypto.Hash(bytes)
+		if err != nil {
+			return err
 		}
+
+		stats.cryptohashes++
+		en.hash = crypto.Hash(bytes)
+
 		if store != nil {
 			stats.dbsets++
 			if debugTrie {
@@ -212,14 +214,17 @@ func deserializeExtensionNode(data []byte, key nibbles) *extensionNode {
 	if len(sharedKey) == 0 {
 		panic("sharedKey can't be empty in an extension node")
 	}
-	hash := new(crypto.Digest)
+	var hash crypto.Digest
 	copy(hash[:], data[1:33])
 	var child node
-	if *hash != (crypto.Digest{}) {
+	if !hash.IsZero() {
 		chKey := key[:]
 		chKey = append(chKey, sharedKey...)
 		child = makeBackingNode(hash, chKey)
+	} else {
+		panic("next node hash can't be zero in an extension node")
 	}
+
 	return makeExtensionNode(sharedKey, child, key)
 }
 func (en *extensionNode) serialize() ([]byte, error) {
@@ -235,6 +240,7 @@ func (en *extensionNode) serialize() ([]byte, error) {
 	}
 
 	copy(data[1:33], en.next.getHash()[:])
+	//    copy(data[1:33], en.next.getHash().ToSlice())
 	copy(data[33:], pack)
 	return data, nil
 }
@@ -251,7 +257,8 @@ func (en *extensionNode) preload(store backing) node {
 func (en *extensionNode) evict(eviction func(node) bool) {
 	if eviction(en) {
 		fmt.Printf("evicting ext node %x\n", en.getKey())
-		en.next = makeBackingNode(en.next.getHash(), en.next.getKey())
+		//		en.next = makeBackingNode(en.next.getHash(), en.next.getKey())
+		en.next = makeBackingNode(*en.next.getHash(), en.next.getKey())
 		stats.evictions++
 	} else {
 		en.next.evict(eviction)
@@ -260,6 +267,9 @@ func (en *extensionNode) evict(eviction func(node) bool) {
 func (en *extensionNode) getKey() nibbles {
 	return en.key
 }
+
+//	func (en *extensionNode) getHash() crypto.Digest {
+//		return en.hash
 func (en *extensionNode) getHash() *crypto.Digest {
-	return en.hash
+	return &en.hash
 }

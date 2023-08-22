@@ -26,7 +26,7 @@ type branchNode struct {
 	children  [16]node
 	valueHash crypto.Digest
 	key       nibbles
-	hash      *crypto.Digest
+	hash      crypto.Digest
 }
 
 func makeBranchNode(children [16]node, valueHash crypto.Digest, key nibbles) *branchNode {
@@ -61,7 +61,7 @@ func (bn *branchNode) add(mt *Trie, pathKey nibbles, remainingKey nibbles, value
 		// If we're here, then set the value hash in this node, overwriting the old one.
 		bn.valueHash = valueHash
 		// transition BN.ADD.1
-		bn.hash = nil
+		bn.hash = crypto.Digest{}
 		return bn, nil
 	}
 
@@ -74,7 +74,7 @@ func (bn *branchNode) add(mt *Trie, pathKey nibbles, remainingKey nibbles, value
 		lnKey = append(lnKey, slot)
 
 		// transition BN.ADD.2
-		bn.hash = nil
+		bn.hash = crypto.Digest{}
 		bn.children[slot] = makeLeafNode(shifted, valueHash, lnKey)
 		mt.addNode(bn.children[slot])
 	} else {
@@ -83,7 +83,7 @@ func (bn *branchNode) add(mt *Trie, pathKey nibbles, remainingKey nibbles, value
 		if err != nil {
 			return nil, err
 		}
-		bn.hash = nil
+		bn.hash = crypto.Digest{}
 		// transition BN.ADD.3
 		bn.children[slot] = replacement
 	}
@@ -103,7 +103,7 @@ func (bn *branchNode) delete(mt *Trie, pathKey nibbles, remainingKey nibbles) (n
 		}
 		// delete this branch's value hash. reset the value to the empty hash.
 		// update the branch node if there are children, or remove it completely.
-		bn.hash = nil
+		bn.hash = crypto.Digest{}
 		bn.valueHash = crypto.Digest{}
 		var only node
 		var onlyIndex int
@@ -140,7 +140,7 @@ func (bn *branchNode) delete(mt *Trie, pathKey nibbles, remainingKey nibbles) (n
 	lnKey = append(lnKey, remainingKey[0])
 	replacement, found, err := bn.children[remainingKey[0]].delete(mt, lnKey, shifted)
 	if found && err == nil {
-		bn.hash = nil
+		bn.hash = crypto.Digest{}
 		bn.children[remainingKey[0]] = replacement
 
 		hasValueHash := bn.valueHash != (crypto.Digest{})
@@ -178,9 +178,9 @@ func (bn *branchNode) delete(mt *Trie, pathKey nibbles, remainingKey nibbles) (n
 	return nil, found, err
 }
 func (bn *branchNode) hashingCommit(store backing) error {
-	if bn.hash == nil {
+	if bn.hash.IsZero() {
 		for i := 0; i < 16; i++ {
-			if bn.children[i] != nil && bn.children[i].getHash() == nil {
+			if bn.children[i] != nil && bn.children[i].getHash().IsZero() {
 				err := bn.children[i].hashingCommit(store)
 				if err != nil {
 					return err
@@ -192,8 +192,7 @@ func (bn *branchNode) hashingCommit(store backing) error {
 			return err
 		}
 		stats.cryptohashes++
-		bn.hash = new(crypto.Digest)
-		*bn.hash = crypto.Hash(bytes)
+		bn.hash = crypto.Hash(bytes)
 
 		if store != nil {
 			stats.dbsets++
@@ -223,15 +222,17 @@ func deserializeBranchNode(data []byte, key nibbles) *branchNode {
 
 	var children [16]node
 	for i := 0; i < 16; i++ {
-		hash := new(crypto.Digest)
+		var hash crypto.Digest
+
 		copy(hash[:], data[1+i*32:33+i*32])
-		if *hash != (crypto.Digest{}) {
+		if !hash.IsZero() {
 			chKey := key[:]
 			chKey = append(chKey, byte(i))
 			children[i] = makeBackingNode(hash, chKey)
 		}
 	}
-	valueHash := crypto.Digest(data[513:545])
+	var valueHash crypto.Digest
+	copy(valueHash[:], data[513:545])
 	return makeBranchNode(children, valueHash, key)
 }
 
@@ -245,7 +246,8 @@ func (bn *branchNode) serialize() ([]byte, error) {
 	bnbuffer.WriteByte(prefix)
 	for i := 0; i < 16; i++ {
 		if bn.children[i] != nil {
-			bnbuffer.Write(bn.children[i].getHash()[:])
+			bnbuffer.Write(bn.children[i].getHash().ToSlice())
+			//			bnbuffer.Write(bn.children[i].getHash()[:])
 		} else {
 			bnbuffer.Write(empty[:])
 		}
@@ -260,8 +262,9 @@ func (bn *branchNode) evict(eviction func(node) bool) {
 		}
 		for i := 0; i < 16; i++ {
 			ch := bn.children[i]
-			if ch != nil && ch.getHash() != nil {
-				bn.children[i] = makeBackingNode(ch.getHash(), ch.getKey())
+			if ch != nil && !ch.getHash().IsZero() {
+				//				bn.children[i] = makeBackingNode(ch.getHash(), ch.getKey())
+				bn.children[i] = makeBackingNode(*ch.getHash(), ch.getKey())
 				stats.evictions++
 			}
 		}
@@ -294,6 +297,9 @@ func (bn *branchNode) lambda(l func(node)) {
 func (bn *branchNode) getKey() nibbles {
 	return bn.key
 }
+
+//	func (bn *branchNode) getHash() crypto.Digest {
+//		return bn.hash
 func (bn *branchNode) getHash() *crypto.Digest {
-	return bn.hash
+	return &bn.hash
 }

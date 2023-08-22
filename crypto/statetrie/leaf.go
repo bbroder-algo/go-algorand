@@ -26,7 +26,7 @@ type leafNode struct {
 	keyEnd    nibbles
 	valueHash crypto.Digest
 	key       nibbles
-	hash      *crypto.Digest
+	hash      crypto.Digest
 }
 
 func makeLeafNode(keyEnd nibbles, valueHash crypto.Digest, key nibbles) *leafNode {
@@ -44,7 +44,7 @@ func (ln *leafNode) raise(mt *Trie, prefix nibbles, key nibbles) node {
 	copy(ln.keyEnd[len(prefix):], ke)
 	ln.key = make(nibbles, len(key))
 	copy(ln.key, key)
-	ln.hash = nil
+	ln.hash = crypto.Digest{}
 	mt.addNode(ln)
 	return ln
 }
@@ -64,7 +64,7 @@ func (ln *leafNode) add(mt *Trie, pathKey nibbles, remainingKey nibbles, valueHa
 		// The two keys are the same. Replace the value.
 		// transition LN.1
 		ln.valueHash = valueHash
-		ln.hash = nil
+		ln.hash = crypto.Digest{}
 		return ln, nil
 	}
 
@@ -154,12 +154,11 @@ func (ln *leafNode) delete(mt *Trie, pathKey nibbles, remainingKey nibbles) (nod
 }
 
 func (ln *leafNode) hashingCommit(store backing) error {
-	if ln.hash == nil {
+	if ln.hash.IsZero() {
 		bytes, err := ln.serialize()
 		if err == nil {
 			stats.cryptohashes++
-			ln.hash = new(crypto.Digest)
-			*ln.hash = crypto.Hash(bytes)
+			ln.hash = crypto.Hash(bytes)
 		}
 		if store != nil {
 			stats.dbsets++
@@ -215,6 +214,10 @@ func (ln *leafNode) evict(eviction func(node) bool) {}
 func (ln *leafNode) getKey() nibbles {
 	return ln.key
 }
+
+//	func (ln *leafNode) getHash() crypto.Digest {
+//		return ln.hash
+//	}
 func (ln *leafNode) getHash() *crypto.Digest {
-	return ln.hash
+	return &ln.hash
 }

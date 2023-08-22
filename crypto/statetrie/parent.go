@@ -1,7 +1,7 @@
 // Copyright (C) 2019-2023 Algorand, Inc.
 // This file is part of go-algorand
 //
-// go-algorand is free software: you can redistribute it and/or modify
+// go-algorand is free software: you can redistribute it and/or modfy
 // it under the terms of the GNU Affero General Public License as
 // published by the Free Software Foundation, either version 3 of the
 // License, or (at your option) any later version.
@@ -55,6 +55,8 @@ func (pa *parent) lambda(l func(node)) {
 func (pa *parent) getKey() nibbles {
 	return pa.p.getKey()
 }
+
+// func (pa *parent) getHash() crypto.Digest {
 func (pa *parent) getHash() *crypto.Digest {
 	return pa.p.getHash()
 }
