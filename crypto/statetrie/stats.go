@@ -39,6 +39,24 @@ type triestats struct {
 
 var stats triestats
 
+func (s triestats) diff(s1 triestats) triestats {
+	return triestats{
+		dbsets:         s.dbsets - s1.dbsets,
+		dbgets:         s.dbgets - s1.dbgets,
+		dbdeletes:      s.dbdeletes - s1.dbdeletes,
+		cryptohashes:   s.cryptohashes - s1.cryptohashes,
+		makeleaves:     s.makeleaves - s1.makeleaves,
+		makeextensions: s.makeextensions - s1.makeextensions,
+		makebranches:   s.makebranches - s1.makebranches,
+		makepanodes:    s.makepanodes - s1.makepanodes,
+		makedbnodes:    s.makedbnodes - s1.makedbnodes,
+		newrootnode:    s.newrootnode - s1.newrootnode,
+		addnode:        s.addnode - s1.addnode,
+		delnode:        s.delnode - s1.delnode,
+		getnode:        s.getnode - s1.getnode,
+		evictions:      s.evictions - s1.evictions,
+	}
+}
 func (s triestats) String() string {
 	return fmt.Sprintf("dbsets: %d, dbgets: %d, dbdeletes: %d, cryptohashes: %d, makeleaves: %d, makeextensions: %d, makebranches: %d, makepanodes: %d, makedbnodes: %d, newrootnode: %d, addnode: %d, delnode: %d, getnode: %d, evictions: %d",
 		s.dbsets, s.dbgets, s.dbdeletes, s.cryptohashes, s.makeleaves, s.makeextensions, s.makebranches, s.makepanodes, s.makedbnodes, s.newrootnode, s.addnode, s.delnode, s.getnode, s.evictions)

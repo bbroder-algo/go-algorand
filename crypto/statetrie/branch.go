@@ -247,7 +247,6 @@ func (bn *branchNode) serialize() ([]byte, error) {
 	for i := 0; i < 16; i++ {
 		if bn.children[i] != nil {
 			bnbuffer.Write(bn.children[i].getHash().ToSlice())
-			//			bnbuffer.Write(bn.children[i].getHash()[:])
 		} else {
 			bnbuffer.Write(empty[:])
 		}
@@ -255,20 +254,30 @@ func (bn *branchNode) serialize() ([]byte, error) {
 	bnbuffer.Write(bn.valueHash[:])
 	return bnbuffer.Bytes(), nil
 }
+
+// evict walks through the node tree and replaces nodes (and their subtrees) with backing nodes
+// if they meet a user-defined eviction criterion
+// The eviction function is provided as an argument and operates on each node to decide whether it should be evicted.
 func (bn *branchNode) evict(eviction func(node) bool) {
+	// If the current branch node meets the eviction criterion
 	if eviction(bn) {
 		if debugTrie {
 			fmt.Printf("evicting branch node %x, (%v)\n", bn.getKey(), bn)
 		}
 		for i := 0; i < 16; i++ {
+			// Evict children if they meet certain conditions
 			ch := bn.children[i]
+			// Only evict the child if it's not nil and its hash is not zero
+			// Backing nodes need hashes for the hashing function to continue
+			// to work properly
 			if ch != nil && !ch.getHash().IsZero() {
-				//				bn.children[i] = makeBackingNode(ch.getHash(), ch.getKey())
 				bn.children[i] = makeBackingNode(*ch.getHash(), ch.getKey())
 				stats.evictions++
 			}
 		}
 	} else {
+		// If the current branch node doesn't meet the eviction criterion,
+		// recursively attempt to evict its children
 		for i := 0; i < 16; i++ {
 			if bn.children[i] != nil {
 				bn.children[i].evict(eviction)

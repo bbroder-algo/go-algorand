@@ -22,10 +22,12 @@ import (
 	"github.com/algorand/go-algorand/crypto"
 	"github.com/algorand/go-algorand/test/partitiontest"
 	"github.com/stretchr/testify/require"
+	"io/ioutil"
+	"os"
 	"runtime"
 	"runtime/pprof"
-	//	"math"
-	"os"
+	"strconv"
+	"strings"
 	//	"runtime"
 	"time"
 	//    "strconv"
@@ -372,46 +374,202 @@ func TestTrieSpecial(t *testing.T) { // nolint:paralleltest // Serial tests for 
 	mt.Commit()
 }
 
-var prepTrie *Trie
+// var prepTrie *Trie
+var akbPrint bool = false
 
-func addKeyBatches(b *testing.B, mt *Trie, accounts acctGetter, totalBatches int, keyLength int, prepopulateCount int, skipCommit bool, batchSize int) {
-	fmt.Println("addKeyBatches", totalBatches, keyLength, prepopulateCount, skipCommit, batchSize)
+func addKeyBatches(b *testing.B, mt *Trie, accounts acctGetter, totalBatches int, keyLength int, prepopulateCount int, skipCommit bool, batchSize int) ([]int, []int) {
+	fmt.Println("addKeyBatches: totalBatches", totalBatches, "keyLength", keyLength, "prepopulateCount", prepopulateCount, "skipCommit", skipCommit, "batchSize", batchSize)
 	// prepopulate the trie
-	if prepTrie == nil {
-		fmt.Println("Prepopulating trie...")
+	var times []int
+	var batchSizes []int
+	//	if prepTrie == nil {
+	if true {
+		if akbPrint {
+			fmt.Println("Prepopulating trie...")
+		}
+		epochStart := time.Now().Truncate(time.Millisecond)
+		var statsStart = stats
 		for m := 0; m < prepopulateCount; m++ {
 			k := accounts.getAcct()
 			mt.Add(k, k)
+			if m%(prepopulateCount/10) == (prepopulateCount/10)-1 {
+				if akbPrint {
+					fmt.Printf("Prepopulated with %d accounts (%4.2f %%)\n", m, float64(m)/float64(prepopulateCount)*100)
+				}
+				if !skipCommit {
+					mt.Commit()
+					epochEnd := time.Now().Truncate(time.Millisecond)
+					var statsEnd = stats
+					timeConsumed := epochEnd.Sub(epochStart)
+					var statsDiff = statsEnd.diff(statsStart)
+					fmt.Println("time", timeConsumed, "new hash:", mt.root.getHash(), statsDiff.String(), "len(mt.dels):", len(mt.dels))
+					epochStart = time.Now().Truncate(time.Millisecond)
+				}
+			}
+		}
+		//		prepTrie = &Trie{store: mt.store, root: mt.root}
+		if akbPrint {
+			fmt.Println("Finished prepopulating trie...")
+		}
+	}
+	//	timedTrie := Trie{store: prepTrie.store, root: prepTrie.root}
+	//warm up on one batch
+	//	for i := 0; i < batchSize; i++ {
+	//		timedTrie.Add(accounts.getAcct(), accounts.getAcct())
+	//	}
+	//	if !skipCommit {
+	//		timedTrie.Commit()
+	//	}
+
+	if b != nil {
+		b.ResetTimer()
+	}
+	for m := 0; m < totalBatches; m++ {
+		epochStart := time.Now().Truncate(time.Millisecond)
+		var statsStart = stats
+		for i := 0; i < batchSize; i++ {
+			mt.Add(accounts.getAcct(), accounts.getAcct())
 		}
 		if !skipCommit {
 			mt.Commit()
 		}
-		prepTrie = &Trie{store: mt.store, root: mt.root}
-		fmt.Println("Finished prepopulating trie...")
-	}
-	timedTrie := Trie{store: prepTrie.store, root: prepTrie.root}
-
-	b.ResetTimer()
-	for m := 0; m < totalBatches; m++ {
-		for i := 0; i < batchSize; i++ {
-			k := accounts.getAcct()
-			v := accounts.getAcct()
-			timedTrie.Add(k, v)
+		epochEnd := time.Now().Truncate(time.Millisecond)
+		var statsEnd = stats
+		timeConsumed := epochEnd.Sub(epochStart)
+		var statsDiff = statsEnd.diff(statsStart)
+		if akbPrint {
+			fmt.Println("time", timeConsumed, "new hash:", mt.root.getHash(), statsDiff.String(), "len(mt.dels):", len(mt.dels))
 		}
-		if !skipCommit {
-			timedTrie.Commit()
+		epochStart = time.Now().Truncate(time.Millisecond)
+		if len(batchSizes) == 0 || int(100.0*float64(m+1)/float64(totalBatches)) != batchSizes[len(batchSizes)-1] {
+			times = append(times, int(timeConsumed.Milliseconds()))
+			batchSizes = append(batchSizes, int(100.0*float64(m+1)/float64(totalBatches)))
+			if akbPrint || true {
+				fmt.Println("times:", times, "batchSizes:", batchSizes, "m:", m, "batchSize:", batchSize)
+			}
 		}
 	}
-	b.StopTimer()
+	if b != nil {
+		b.StopTimer()
+	}
+	return times, batchSizes
 }
-func BenchmarkTrieAddFrom4KiB32NullCommit25(b *testing.B) {
+func sum(data []int) (s int) {
+	for _, v := range data {
+		s += int(v)
+	}
+	return
+}
+
+func keysPerSecond(t *testing.T, mt *Trie, accts acctGetter, batchSize int, treeSize int) ([]int, []int) {
+	totalBatches := treeSize / batchSize
+	times, batchSizes := addKeyBatches(nil, mt, accts, totalBatches, 64, 0, false, batchSize)
+	kps := float64(batchSize) * float64(totalBatches) / float64(sum(times)) / float64(len(times))
+	avg := float64(sum(times)) / float64(len(times))
+	fmt.Println("treeSize:", treeSize, "batchSize:", batchSize, "totalBatches:", totalBatches, "kps:", kps, "avg round time:", avg, "ms")
+	return times, batchSizes
+}
+
+func arrayOfPerfs(t *testing.T, ds *DataStore, batchSize int, label string) {
+	//    back := makeNullBackstore()
+	//    back := makeMemoryBackstore()
+	//    back := makeFileBackstore()
+	//    back := makePebbleBackstoreVFS()
+	back := makePebbleBackstoreDisk("/tmp/pebble/test/", true)
+	mt := MakeTrie(back)
+	times, batchSizes := keysPerSecond(t, mt, acctsRand, batchSize, 64*1_048_576)
+	ds.AddLine(batchSizes, times, label)
+}
+
+type LineData struct {
+	x     []int
+	y     []int
+	label string
+}
+type DataStore struct {
+	lines []LineData
+}
+
+func (ds *DataStore) AddLine(x []int, y []int, label string) {
+	ds.lines = append(ds.lines, LineData{x: x, y: y, label: label})
+}
+func (ds *DataStore) DumpPythonScript(filename string) error {
+	script := `import matplotlib.pyplot as plt
+names = []
+`
+
+	for _, lineData := range ds.lines {
+		xValues := make([]string, len(lineData.x))
+		yValues := make([]string, len(lineData.y))
+		for j, b := range lineData.x {
+			xValues[j] = strconv.Itoa(int(b))
+		}
+		for j, b := range lineData.y {
+			yValues[j] = strconv.Itoa(int(b))
+		}
+		script += fmt.Sprintf("d%s_x = [%s]\n", lineData.label, strings.Join(xValues, ","))
+		script += fmt.Sprintf("d%s_y = [%s]\n", lineData.label, strings.Join(yValues, ","))
+		script += fmt.Sprintf("names.append([d%s_x, d%s_y, '%s'])\n", lineData.label, lineData.label, lineData.label)
+	}
+
+	script += `
+plt.figure(figsize=(10,6))
+for x, y, n in names:
+    mp = len(x) // 2
+    plt.annotate(n, (x[mp], y[mp]), textcoords="offset points", xytext=(0,10), ha='center')
+
+`
+
+	for _, lineData := range ds.lines {
+		plotLine := fmt.Sprintf("plt.plot(d%s_x, d%s_y, '-o')\n", lineData.label, lineData.label)
+		script += plotLine
+	}
+
+	script += `
+plt.xlabel('Percent of trie filled')
+plt.ylabel('Round time (ms)')
+plt.savefig("image.jpg", dpi=300, bbox_inches='tight')
+`
+
+	return ioutil.WriteFile(filename, []byte(script), 0644)
+}
+
+func TestSpeeds(t *testing.T) { //nolint:paralleltest // Serial tests for trie for the momen t
+	// t.Parallel()
+
+	fmt.Println(t.Name())
+	akbPrint = false
+
+	ds := &DataStore{}
+	//	/ds.AddLine(ds, []byte{7, 14, 21}, "secondLine")
+	//    arrayOfPerfs(t, ds,524288, string("KPB_524288_1"))
+	//    arrayOfPerfs(t, ds,131072, string("KPB_131072_1"))
+	//    arrayOfPerfs(t, ds,65536, string("KPB_65536_1"))
+	//    arrayOfPerfs(t, ds, 262144, string("KPB_262144_1"))
+	arrayOfPerfs(t, ds, 262144, string("KPB_262144_1"))
+
+	err := ds.DumpPythonScript("plot.py")
+	if err != nil {
+		fmt.Println("Error generating Python script:", err)
+	}
+
+	return
+}
+
+func BenchmarkTrieAddFromRandomNullStore250(b *testing.B) {
 	back := makeNullBackstore()
 	mt := MakeTrie(back)
-	addKeyBatches(b, mt, accts64KiB, b.N, 32, 1*65_536, true, 25_000)
+	addKeyBatches(b, mt, acctsRand, b.N, 64, 64*1_048_576, false, 250_000)
 	mt.store.close()
 }
-func BenchmarkTrieAddFrom4KiB32NoCommit25(b *testing.B) {
-	back := makePebbleBackstoreVFS()
+func BenchmarkTrieAddFrom64KiB32NullCommit25(b *testing.B) {
+	back := makeNullBackstore()
+	mt := MakeTrie(back)
+	addKeyBatches(b, mt, accts64KiB, b.N, 32, 1*65_536, false, 25_000)
+	mt.store.close()
+}
+func BenchmarkTrieAddFrom64KiB32NoCommit25(b *testing.B) {
+	back := makeNullBackstore()
 	mt := MakeTrie(back)
 	addKeyBatches(b, mt, accts64KiB, b.N, 32, 1*65_536, true, 25_000)
 	mt.store.close()
@@ -432,12 +590,6 @@ func BenchmarkTrieAddFrom64KiB32InMem25(b *testing.B) {
 	back := makePebbleBackstoreVFS()
 	mt := MakeTrie(back)
 	addKeyBatches(b, mt, accts64KiB, b.N, 32, 1*65_536, false, 25_000)
-	mt.store.close()
-}
-func BenchmarkTrieAddFromRandomNullStore250(b *testing.B) {
-	back := makeNullBackstore()
-	mt := MakeTrie(back)
-	addKeyBatches(b, mt, acctsRand, b.N, 64, 64*1_048_576, false, 250_000)
 	mt.store.close()
 }
 func skipBenchmarkTrieAddFrom64MiB32NoCommit250(b *testing.B) {
@@ -595,6 +747,8 @@ func addKeysNoopEvict(mt *Trie, accounts acctGetter, totalBatches int, keyLength
 	for m := 0; m < totalBatches; m++ {
 
 		epochStart := time.Now().Truncate(time.Millisecond)
+		var statsStart = stats
+
 		for i := 0; i < batchSize; i++ {
 			mt.Add(accounts.getAcct(), accounts.getAcct())
 		}
@@ -621,8 +775,11 @@ func addKeysNoopEvict(mt *Trie, accounts acctGetter, totalBatches int, keyLength
 		//		mt.root.evict(shouldEvict)
 
 		epochEnd := time.Now().Truncate(time.Millisecond)
+		var statsEnd = stats
 		timeConsumed := epochEnd.Sub(epochStart)
-		fmt.Println("time", timeConsumed, "new hash:", mt.root.getHash(), stats.String(), "len(mt.dels):", len(mt.dels))
+		var statsDiff = statsEnd.diff(statsStart)
+
+		fmt.Println("time", timeConsumed, "new hash:", mt.root.getHash(), statsDiff.String(), "len(mt.dels):", len(mt.dels))
 	}
 	fmt.Println("Done", batchSize, ", totalBatches", totalBatches, ", total keys:", totalBatches*batchSize, ")")
 	pprof.StopCPUProfile()
@@ -981,7 +1138,7 @@ func TestTrieAdd1kRandomKeyValues(t *testing.T) { // nolint:paralleltest // Seri
 
 }
 
-func TestTrieStupidAddSimpleSequenceNoCache(t *testing.T) { // nolint:paralleltest // Serial tests for trie for the moment
+func TestTriedAddSimpleSequenceNoCache(t *testing.T) { // nolint:paralleltest // Serial tests for trie for the moment
 	partitiontest.PartitionTest(t)
 	// t.Parallel()
 	back := makePebbleBackstoreVFS()

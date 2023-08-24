@@ -37,8 +37,9 @@ backstore and into memory if required.
 
 ***Trie operation and usage:***
 
-Tries are initialized against a backing store (a memory one will be constructed
-if not provided by the user).
+Tries are initialized against a backing store (an empty memory one will be
+constructed if not provided by the user) where the full trie ultimately resides
+on Commit.
 
 ```
 mt := MakeTrie(nil)
@@ -57,40 +58,52 @@ mt.Delete(key2)
 fmt.Println("K1:V1 Hash:", mt.Hash())
 
 mt.Commit()
+mt.Evict(func(node) bool { 
+  return true
+})
 ```
 
 The trie maintains an interface reference to the root of the trie, which is one
-of the six possible trie nodes listed below.  Trie operations Add and Delete
-descend the trie from this node, loading in nodes from the backstore (as
-necessary), creating new nodes (if necessary), and keeping track of nodes that
-can be deleted from the backstore on the next Commit.
+of five possible trie node types described below.  Trie operations Add and
+Delete descend the trie from this node, loading in nodes from the backstore (as
+necessary), creating new nodes (if the key added is unique or a key is found
+for deletion), and keeping track of nodes that can be deleted from the
+backstore on the next Commit.
 
-Think of a hypothetical "trie" living on a massive backing store.  New trie
-objects that operate on this trie are created by `MakeTrie (store)` and have as
-a root a single node with aallreferences pointing away from it stored as
-backing nodes.  When Add or Delete operations want to descend through one of
-these backing nodes, the bytes are obtained from the backing store and
-deserialized into one of the three main trie node types (branch, extension, or
-leaf).
+Think of a hypothetical "trie" living on a massive backing store.  New
+statetrie objects that operate on this trie are created by `MakeTrie (store)`
+and are initialized by loading and deserializing the root node from the store.
+All references pointing down from this node are represented by backing node
+objects.  When Add or Delete operations want to descend through one of these
+backing nodes, the bytes are obtained from the backing store and deserialized
+into one of the three main trie node types (branch, extension, or leaf).
 
-In this way trie operations 'unroll' the trie into working memory from a store
-as necessary to complete the operation.
+In this way, trie operations 'unroll' paths from the trie store into working
+memory as necessary to complete the operation.  
 
-Nodes that can be reached from the trie object root represent:
+Nodes that can be reached from the trie object root node represent:
 
-1. uncommitted new intermediary or leaf nodes created in support of the Add or Delete and are not yet hashed,
+1. uncommitted new intermediary or leaf nodes created in support of the Add or Delete and are not yet hashed
 
-2. altered nodes created from prior operations that were never evicted, with their hash now zeroed,
+2. altered nodes created from prior operations that were never evicted (replaced with backing nodes), with their hash now zeroed
 
-3. unaltered nodes created from prior operations in the past that were never evicted (replaced with backing nodes), and know their hash,
+3. unaltered nodes created from prior operations in the past that were never evicted (replaced with backing nodes), have a known hash
 
-4. references to nodes on the backing store, whose hash is known,
+4. references to nodes on the backing store, whose hash is known
 
-5. references to nodes in the parent trie, which act as lazy copies of the parent nodes and disappear on merge,
+5. references to nodes in the parent trie, which act as lazy copies of the parent nodes and disappear on merge
 
 On Commit, the first two node categories reachable from the root node
 (following parent links) are hashed and committed to the backstore, and any
 keys marked for deletion are removed from the store.
+
+Unmodified unrolls or committed nodes can either stay in memory or face
+eviction from their parent node by an eviction function in a call to Evict.
+Eviction of branching and extension nodes replaces their lower subtrie with a
+backing node. The eviction function in the sample above is called after Commit,
+guaranteeing all nodes are either unmodified or committed, and evicts all of
+them, thus reducing the representation of the backing store trie in the
+statetrie object to a single in-memory node.
 
 ***Trie node types:***
 
@@ -103,13 +116,25 @@ size, and cannot be empty (the root node is the empty nibble).
 
 The node hash is set to the zero value if it is not yet known or if the
 contents of the node were altered in a trie operation.  The hash is calculated
-by either of the trie methods `Hash()` or `Commit()`, the later which
-hashes and commits the node changes with node method `HashAndCommit(store)`.
-In these operations, the node hash is set to the SHA-256 hash of the
-serialization of the node.
+by either of the trie methods `Hash()` or `Commit()`, the later which hashes
+and commits the node changes with node method `hashingCommit(store)`. In these
+operations, the node hash is set to the SHA-256 hash of the serialization of
+the node.  The hashing scheme requires the lower levels of the trie to be
+hashed before the higher levels.
 
-There are six possible trie nodes.  Any of the node types can be the root of a
-trie.  Only the first three are committed to the backing store.   
+There are five possible trie nodes. Any of the node types can be the root of a
+trie.  Only the first three are committed to the backing store.
+
+## Trie Node Types
+
+| Node Type      | Description                                                                                           | Value Holding | Stored in Backstore |
+|----------------|-------------------------------------------------------------------------------------------------------|---------------|---------------------|
+| Leaf Nodes     | Contains the remainder of the search key (`keyEnd`) and the hash of the value.                         | Yes           | Yes                 |
+| Branch Nodes   | Holds references to 16 children nodes and an optional "value slot" for keys that terminate at the node. | Optional      | Yes                 |
+| Extension Nodes| Contains a run of commonly shared key nibbles that lead to the next node. No value is held.            | No            | Yes                 |
+| Parent Nodes   | Soft-links back to a node in a parent trie. They expand into copies if edited.                         | Varies        | No                  |
+| Backing Nodes  | Soft links back to a node in the backing store. They are expanded into one of the main nodes if read.  | Varies        | No                  |
+
 
 **Leaf nodes**
 
@@ -140,18 +165,24 @@ These nodes are soft links back to a node in the backing store, containing the
 key and the hash of the node.  They are expanded into one of the three main
 nodes if the node is read.
 
+When the trie is hashed, these nodes contain their own hash and thus do not
+require the hash algorithm to descend that subtree from the backing store any
+further.  In this way the hashing function continues to function without
+loading the entire trie structure into memory.
+
 When operated on, backing nodes deserialize themselves from the backing store
-by calling `get`, which calls a node deserialization method to determines the
-node type from a prefix.  From there the node type handles the rest of the
-deserialization. This deserialization has a hash value for the new node, as it was
-stored by the node pointing to the backing node (in either the child slot of a
-branch node, or the next slot of an extension node).
+by calling `get`, which calls a node deserialization method to determine the
+node type (from a prefix), and then the specific node type handles the rest of
+the deserialization into a node object. This deserialization provides a hash
+value to the new node object, as this value is recorded from the
+deserialization of its parent node in the trie when the backing node was
+constructed.  
 
 If the deserialized branch or extension node points at another node, that
-reference is stored as another backing node with its key set to the location in
-the trie and with its hash set to the SHA-256 hash of the node taken from the
-deserialization bytes. If later trie operations need to read these nodes, they
-are in turn deseralized.  
+"pointed-at" node reference is stored as another backing node with its key set
+to the location in the trie and with its hash set to the SHA-256 hash of the
+node taken from the store bytes. If later trie operations need to descend
+through these nodes, they are in turn deseralized as described.
 
 ***Nibbles:***
 
@@ -162,55 +193,92 @@ last-byte bit.
 ***Trie child and merge operations:***
 
 Child tries are represented as tries with unexplored node references ("parent
-nodes") that point back to unmodified parts of the parent trie. 
+nodes") that point back to unmodified node objects of the parent trie. 
 
 Obtaining a child trie from a trie allows the user to easily dispose of stacks
-of changes to a parent trie at an arbitrary time.
+of changes to a child trie at an arbitrary time while retaining the parent.
 
 Parent tries must remain read-only until after the child is disregared or until
 after it is merged back into the parent.
 
-When a child trie is initialized, it is anchored to the parent by setting its
-root node to a parent node that points back to the parent trie root.
-Accessing this node to service an Add or Delete operation converts 
-the parent node into a copy of the parent (whichever of the three main trie node
-types it was), and from there the operations continue with the copy holding
-any alterations.
+When a child trie is initialized, it is anchored to the parent by initializing
+its root node to a parent node object that points back to the parent trie root
+node object. Accessing this parent node to service an Add or Delete operation
+converts the parent node into a copy of the original parent node (with the
+`child` node method), and from there the operations continue with the copy
+holding any alterations.
 
-When merging child tries back into their parents, the trie undergoes a
-traversal. This search aims to identify parent nodes, which are then replaced
-with their original references, effectively stitching the child trie's
-modifications into the parent trie. 
+When merging child tries back into their parents, The in-memory node objects in
+a child trie undergoes a traversal when merging back into the parent. This
+search aims to identify parent nodes, which are then replaced by their original
+references, effectively stitching the child trie's modifications into the
+parent trie. 
 
-Node deletion list are propagated into the parent to be handled by a future
-parent backstore commit.
+Node deletion lists are propagated into the parent in a merge to be handled by
+a future parent backstore commit.
+
+***Eviction:***
+
+Nodes can be evicted from memory after Commit and all their subtree replaced by
+a single backing node according to the binary output of a user-defined function
+which operates on each node.  The nodes would have to be read back in from the
+backing store to resume operations on them.  Eviction of a node only affects
+branch and extension nodes, who replace their children with backing nodes. 
+
+
+***Raising:***
+
+Some delete operations require a trie transformation that relocates a node
+"earlier" in the trie. These relocations shorten the key from the original key.
+Relocating a leaf node merely reassigns the key value and adjusts the ending
+key value in the node to compensate. But raising a branch node creates a new
+extension node and places it just above the branch node. Raising an extension
+node extends its shared key and relocates its key.  Raising a backing node gets
+the node from the store and then immediately raises it.  Similarly, raising a
+parent node copies the parent node by evoking `child` on it and immediately
+raises it.  After a raising operation, there is guaranteed to be a node at the
+new location in the trie.
+
 
 ***Backing stores:***
 
-Backing stores are kv stores which maintain the mapping between trie keys and
-node serialization data.  
+In large backing store tries, only a fraction of the trie nodes are represented
+by in-memory trie node objects.  The rest of the nodes live in the backing
+store.
+
+Backing stores are kv stores which maintain all the mapping between committed
+trie keys and node serialization data (which includes the hash of the key
+value).
 
 Backing stores must "set" byte data containing serialized nodes, and "get"
 nodes back from the store by deserializing them into trie nodes that (may)
-contain deferred references to further backing store nodes.  The simplest
-backing store is a golang map from byte slices to nodes, and uses the provided
-node serialization / deserialization utilites.  
+contain deferred references to further backing store nodes.  A simple backing
+store is a golang map from strings to nodes which uses the provided node
+serialization / deserialization utilites.  This is implemented as
+`memoryBackstore`.
 
-`BatchStart()` is called before any store operations are begun, and
-`BatchEnd()` is called after there are no more, to allow for batch commits. 
+`BatchStart()` methods on backing stores called before any store set operations
+are begun, and `BatchEnd()` is called after there are no more, to allow for
+preparations around batch commits. 
 
-Committing the trie to the backing store will trigger hashing of the trie, if
-it is modified since the last hashing operation.
+Committing the trie to the backing store will trigger hashing of the trie, as
+committing requires node serialization and node serialization requires the hash
+of subtree elements in branch and extension nodes.
 
 ***Preloading:***
 
 Normally only part of the trie is kept in memory.  However, the trie can sweep
-all nodes out of the backstore and into memory by calling `preload`. 
+all nodes out of the backstore and into memory by calling `preload`.  This
+should only be performed on small tries.  When considering memory, remember
+that the hash of the key values is stored, so if the value is smaller than 32
+bytes, the value size is expanding, and when the values are larger, they are
+compressed in the trie in the form of the hash.
 
 ***Trie transitions during Add operation:***
 
-An Add results in a group of one or more trie transitions from a group of 25.  These
-transitions are marked in the source with their identifier. 
+An Add results in a group of one or more trie transitions from a group of 25.
+These transitions are marked in the source with their identifier.  This section
+is a companion to the `add` node method in the node objects.
 
 **Leaf nodes**
 

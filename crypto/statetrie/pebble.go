@@ -23,6 +23,35 @@ import (
 	"os"
 )
 
+type fileBackstore struct {
+	file os.File
+}
+
+func makeFileBackstore() *fileBackstore {
+	f, err := os.OpenFile("filebackstore", os.O_RDWR|os.O_CREATE, 0755)
+	if err != nil {
+		panic(err)
+	}
+	return &fileBackstore{file: *f}
+}
+func (fb *fileBackstore) get(key nibbles) node {
+	stats.dbgets++
+	return nil
+}
+func (fb *fileBackstore) close() error {
+	return fb.file.Close()
+}
+func (fb *fileBackstore) set(key nibbles, value []byte) error {
+	fb.file.Write(key)
+	fb.file.Write(value)
+	return nil
+}
+func (fb *fileBackstore) del(key nibbles) error {
+	return nil
+}
+func (fb *fileBackstore) batchStart() {}
+func (fb *fileBackstore) batchEnd()   {}
+
 type pebbleBackstore struct {
 	db *pebble.DB
 	b  *pebble.Batch
@@ -59,7 +88,7 @@ func (pb *pebbleBackstore) get(key nibbles) node {
 
 	dbbytes, closer, err := pb.db.Get(key)
 	if err != nil {
-		fmt.Printf("\npebble err: key %x, error %v\n", key, err)
+		//		fmt.Printf("\npebble err: key %x, error %v\n", key, err)
 		return nil
 	}
 	defer closer.Close()
