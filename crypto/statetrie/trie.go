@@ -79,7 +79,9 @@ func (mt *Trie) Add(key nibbles, value []byte) (err error) {
 	if err != nil {
 		return err
 	}
-	stats.newrootnode++
+	if replacement.getHash().IsZero() {
+		stats.newrootnode++
+	}
 	mt.root = replacement
 	return nil
 }
@@ -155,6 +157,7 @@ func (mt *Trie) Commit() error {
 		}
 	}
 	for k := range mt.dels {
+		stats.dbdeletes++
 		err := mt.store.del([]byte(k))
 		if err != nil {
 			return err

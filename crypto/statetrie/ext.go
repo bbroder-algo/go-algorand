@@ -45,9 +45,11 @@ func (en *extensionNode) add(mt *Trie, pathKey nibbles, remainingKey nibbles, va
 		if err != nil {
 			return nil, err
 		}
+		if replacement.getHash().IsZero() {
+			en.hash = crypto.Digest{}
+		}
 		// transition EN.ADD.1
 		en.next = replacement
-		en.hash = crypto.Digest{}
 		return en, nil
 	}
 

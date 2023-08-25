@@ -32,8 +32,8 @@ Backstore commit: The trie supports committing changes to the trie to a backing
 store that fuctions like a batched kv interface.
 
 Preloading: Though the trie is designed to keep only parts of it in memory for
-efficiency, it offers a preloading feature to sweep all nodes out of the
-backstore and into memory if required.
+efficiency, it offers a preloading feature to sweep all nodes above a provided
+level out of the backstore and into memory if required.
 
 ***Trie operation and usage:***
 
@@ -156,7 +156,7 @@ are no extension nodes with no next node.
 **Parent nodes**
 
 These nodes are soft-links back to a node in a parent trie from a child trie.
-They are expanded into copies of thei nodes they link to if the node is edited
+They are expanded into copies of their nodes they link to if the node is edited
 or replaced in an Add or Delete operation.  
 
 **Backing nodes**
@@ -268,11 +268,14 @@ of subtree elements in branch and extension nodes.
 ***Preloading:***
 
 Normally only part of the trie is kept in memory.  However, the trie can sweep
-all nodes out of the backstore and into memory by calling `preload`.  This
-should only be performed on small tries.  When considering memory, remember
-that the hash of the key values is stored, so if the value is smaller than 32
-bytes, the value size is expanding, and when the values are larger, they are
-compressed in the trie in the form of the hash.
+nodes out of the backstore and into memory by calling Preload.  
+
+Preload loads into trie memory all backing nodes reachable from the root that
+keys with length less than or equal to the one provided by obtaining them from
+the store.
+
+In a full (and therefore balanced) trie, preloading lengths has the effect of 
+loading the top levels of the trie.  This could accelerate future trie operations.
 
 ***Trie transitions during Add operation:***
 

@@ -35,7 +35,7 @@ type backingNode struct {
 }
 
 func makeBackingNode(hash crypto.Digest, key nibbles) *backingNode {
-	stats.makedbnodes++
+	stats.makebanodes++
 	ba := &backingNode{hash: hash, key: make(nibbles, len(key))}
 	copy(ba.key, key)
 	return ba

@@ -59,6 +59,11 @@ func (bn *branchNode) child() node {
 func (bn *branchNode) add(mt *Trie, pathKey nibbles, remainingKey nibbles, valueHash crypto.Digest) (node, error) {
 	if len(remainingKey) == 0 {
 		// If we're here, then set the value hash in this node, overwriting the old one.
+		if bn.valueHash == valueHash {
+			// If it is the same value, do not zero the hash
+			return bn, nil
+		}
+
 		bn.valueHash = valueHash
 		// transition BN.ADD.1
 		bn.hash = crypto.Digest{}
@@ -83,7 +88,10 @@ func (bn *branchNode) add(mt *Trie, pathKey nibbles, remainingKey nibbles, value
 		if err != nil {
 			return nil, err
 		}
-		bn.hash = crypto.Digest{}
+		// If the replacement hash is zero, zero the branch node hash
+		if replacement.getHash().IsZero() {
+			bn.hash = crypto.Digest{}
+		}
 		// transition BN.ADD.3
 		bn.children[slot] = replacement
 	}
@@ -143,7 +151,7 @@ func (bn *branchNode) delete(mt *Trie, pathKey nibbles, remainingKey nibbles) (n
 		bn.hash = crypto.Digest{}
 		bn.children[remainingKey[0]] = replacement
 
-		hasValueHash := bn.valueHash != (crypto.Digest{})
+		hasValueHash := !bn.valueHash.IsZero()
 		var only node
 		var onlyIndex int
 		for i := 0; i < 16; i++ {

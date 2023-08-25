@@ -65,6 +65,10 @@ func (ln *leafNode) setHash(hash crypto.Digest) {
 func (ln *leafNode) add(mt *Trie, pathKey nibbles, remainingKey nibbles, valueHash crypto.Digest) (node, error) {
 	if equalNibbles(ln.keyEnd, remainingKey) {
 		// The two keys are the same. Replace the value.
+		if ln.valueHash == valueHash {
+			// The two values are the same.  No change, don't clear the hash.
+			return ln, nil
+		}
 		// transition LN.1
 		ln.valueHash = valueHash
 		ln.hash = crypto.Digest{}
