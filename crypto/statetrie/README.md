@@ -82,9 +82,9 @@ In this way, trie operations 'unroll' paths from the trie store into working
 memory as necessary to complete the operation.  
 
 ```
-Trie on backing store
+Trie on backing store:
                 _____
-               |  R1 |
+               | BR1 |
            ____|_____|____
           /              \
          /                \
@@ -97,18 +97,18 @@ Trie on backing store
 O   O   O   O   O  O   O   O   O   O
 
 
-statetrie Trie of that backing store trie, immediately after MakeTrie, with
-the two child nodes held as backing nodes with known hashes. The root hash
-of the backing store can be calculated immediately without descending.
+statetrie Trie of that backing store trie, immediately after MakeTrie, with the
+two child nodes held as backing nodes (labeled 'b') with known hashes (the root
+hash of the backing store can be calculated immediately without descending):
 
           ___
-         | R1|
+         |BR1|
          /   \
         /     \
-       O       O  
+       b       b  
 
 statetrie Trie of that backing store trie after a few update Add operations,
-with more paths unrolled from the backing store.
+with more paths unrolled from the backing store:
 
           ___
          | R1|
@@ -118,7 +118,7 @@ with more paths unrolled from the backing store.
      /     \       \
     O       O       O
    /       / \     / \
-  O       O   o   O   O
+  O       O   b   b   O
  /       /           / \
 O       O           O   O
 ```
