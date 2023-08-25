@@ -164,6 +164,9 @@ func (en *extensionNode) merge(mt *Trie) {
 func (en *extensionNode) child() node {
 	return makeExtensionNode(en.sharedKey, makeParent(en.next), en.getKey())
 }
+func (en *extensionNode) setHash(hash crypto.Digest) {
+	en.hash = hash
+}
 
 func (en *extensionNode) hashingCommit(store backing) error {
 	if en.hash.IsZero() {
@@ -244,13 +247,12 @@ func (en *extensionNode) serialize() ([]byte, error) {
 	copy(data[33:], pack)
 	return data, nil
 }
-func (en *extensionNode) lambda(l func(node)) {
+func (en *extensionNode) lambda(l func(node), store backing) {
 	l(en)
-	en.next.lambda(l)
+	en.next.lambda(l, store)
 }
-func (en *extensionNode) preload(store backing) node {
-	en.next = en.next.preload(store)
-	en.next.preload(store)
+func (en *extensionNode) preload(store backing, length int) node {
+	en.next = en.next.preload(store, length)
 	return en
 }
 

@@ -48,16 +48,19 @@ func (ln *leafNode) raise(mt *Trie, prefix nibbles, key nibbles) node {
 	mt.addNode(ln)
 	return ln
 }
-func (ln *leafNode) lambda(l func(node)) {
+func (ln *leafNode) lambda(l func(node), store backing) {
 	l(ln)
 }
-func (ln *leafNode) preload(store backing) node {
+func (ln *leafNode) preload(store backing, length int) node {
 	return ln
 }
 
 func (ln *leafNode) merge(mt *Trie) {}
 func (ln *leafNode) child() node {
 	return makeLeafNode(ln.keyEnd, ln.valueHash, ln.key)
+}
+func (ln *leafNode) setHash(hash crypto.Digest) {
+	ln.hash = hash
 }
 func (ln *leafNode) add(mt *Trie, pathKey nibbles, remainingKey nibbles, valueHash crypto.Digest) (node, error) {
 	if equalNibbles(ln.keyEnd, remainingKey) {

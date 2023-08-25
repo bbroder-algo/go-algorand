@@ -39,6 +39,9 @@ func (pa *parent) delete(mt *Trie, pathKey nibbles, remainingKey nibbles) (node,
 func (pa *parent) raise(mt *Trie, prefix nibbles, key nibbles) node {
 	return pa.p.child().raise(mt, prefix, key)
 }
+func (pa *parent) setHash(hash crypto.Digest) {
+	pa.p.setHash(hash)
+}
 func (pa *parent) hashingCommit(store backing) error {
 	return pa.p.hashingCommit(store)
 }
@@ -46,10 +49,14 @@ func (pa *parent) hashing() error {
 	return pa.p.hashing()
 }
 func (pa *parent) evict(eviction func(node) bool) {}
-func (pa *parent) preload(store backing) node {
-	return pa.p
+func (pa *parent) preload(store backing, length int) node {
+	return pa.p.preload(store, length)
 }
-func (pa *parent) lambda(l func(node)) {
+func (pa *parent) lambda(l func(node), store backing) {
+	if store != nil {
+		pa.p.lambda(l, store)
+		return
+	}
 	l(pa)
 }
 func (pa *parent) getKey() nibbles {

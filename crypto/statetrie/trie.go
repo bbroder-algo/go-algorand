@@ -46,6 +46,10 @@ func MakeTrie(store backing) *Trie {
 		mt.store = makeMemoryBackstore()
 	}
 	mt.root = mt.store.get(nibbles{})
+	if debugTrie {
+		mt.Hash()
+		fmt.Printf("MakeTrie: %v\n", mt.root.getHash())
+	}
 	return mt
 }
 
@@ -159,6 +163,13 @@ func (mt *Trie) Commit() error {
 	mt.store.batchEnd()
 	mt.dels = make(map[string]bool)
 	return nil
+}
+
+// Preload preloads the first n levels of the trie into memory
+func (mt *Trie) Preload(level int) {
+	if mt.root != nil {
+		mt.root.preload(mt.store, level)
+	}
 }
 
 // delNode marks a node for deletion

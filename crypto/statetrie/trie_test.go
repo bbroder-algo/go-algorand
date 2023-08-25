@@ -18,6 +18,7 @@ package statetrie
 
 import (
 	"bytes"
+	"encoding/gob"
 	"fmt"
 	"github.com/algorand/go-algorand/crypto"
 	"github.com/algorand/go-algorand/test/partitiontest"
@@ -72,6 +73,10 @@ func TestTrieReadme(t *testing.T) { // nolint:paralleltest // Serial tests for t
 	debugTrie = false
 }
 
+func bToMb(b uint64) uint64 {
+	return b / 1024 / 1024
+}
+
 func TestTrieDelete(t *testing.T) { // nolint:paralleltest // Serial tests for trie for the moment
 	partitiontest.PartitionTest(t)
 	// t.Parallel()
@@ -109,7 +114,7 @@ func TestTrieDelete(t *testing.T) { // nolint:paralleltest // Serial tests for t
 	mt.Add(key3, key4)
 	mt.Add(key4, key5)
 	H3H4 := mt.Hash()
-	fmt.Println("Hash:", mt.Hash(), " K3 K4 ", countNodes(mt))
+	fmt.Println("Hash:", mt.Hash(), " K3 K4 ", countNodes(mt, false, false))
 
 	reset(mt)
 	mt.Add(key1, key2)
@@ -122,29 +127,29 @@ func TestTrieDelete(t *testing.T) { // nolint:paralleltest // Serial tests for t
 	require.Equal(t, H1H2H3H4D2, H1H3H4)
 
 	mt.Delete(key1)
-	fmt.Println("Hash:", mt.Hash(), " K1 K2 K3 K4 D2 D1 ", countNodes(mt))
+	fmt.Println("Hash:", mt.Hash(), " K1 K2 K3 K4 D2 D1 ", countNodes(mt, false, false))
 	H1H2H3H4D2D1 := mt.Hash()
 	require.Equal(t, H1H2H3H4D2D1, H3H4)
 	reset(mt)
 
 	reset(mt)
-	fmt.Println("mt", countNodes(mt))
+	fmt.Println("mt", countNodes(mt, false, false))
 	fmt.Println("Add key1")
 	mt.Add(key1, key2)
 	require.Equal(t, H1, mt.Hash())
 	fmt.Println("Hash:", mt.Hash())
-	fmt.Println("mt", countNodes(mt))
+	fmt.Println("mt", countNodes(mt, false, false))
 	fmt.Println("Making child.. child = mt.Child")
 	ch := mt.Child()
 	require.Equal(t, H1, mt.Hash())
-	fmt.Println("mt", countNodes(mt))
+	fmt.Println("mt", countNodes(mt, false, false))
 	require.Equal(t, H1, ch.Hash())
-	fmt.Println("ch", countNodes(ch))
+	fmt.Println("ch", countNodes(ch, false, false))
 
 	fmt.Println("Child Hash:", ch.Hash())
-	fmt.Println("ch", countNodes(ch))
+	fmt.Println("ch", countNodes(ch, false, false))
 	fmt.Println("Parent Hash:", mt.Hash())
-	fmt.Println("mt", countNodes(mt))
+	fmt.Println("mt", countNodes(mt, false, false))
 
 	fmt.Println("Add key2 to Child")
 	ch.Add(key2, key3)
@@ -152,9 +157,9 @@ func TestTrieDelete(t *testing.T) { // nolint:paralleltest // Serial tests for t
 	require.Equal(t, H1H2, ch.Hash())
 
 	fmt.Println("Child Hash:", ch.Hash())
-	fmt.Println("ch", countNodes(ch))
+	fmt.Println("ch", countNodes(ch, false, false))
 	fmt.Println("Parent Hash:", mt.Hash())
-	fmt.Println("mt", countNodes(mt))
+	fmt.Println("mt", countNodes(mt, false, false))
 
 	fmt.Println("Merge...")
 	ch.Merge()
@@ -162,9 +167,9 @@ func TestTrieDelete(t *testing.T) { // nolint:paralleltest // Serial tests for t
 	require.Equal(t, H1H2, ch.Hash())
 
 	fmt.Println("Child Hash:", ch.Hash())
-	fmt.Println("ch", countNodes(ch))
+	fmt.Println("ch", countNodes(ch, false, false))
 	fmt.Println("Parent Hash:", mt.Hash())
-	fmt.Println("mt", countNodes(mt))
+	fmt.Println("mt", countNodes(mt, false, false))
 
 	fmt.Println("Add key3 to child")
 	ch.Add(key3, key4)
@@ -172,22 +177,22 @@ func TestTrieDelete(t *testing.T) { // nolint:paralleltest // Serial tests for t
 	require.Equal(t, H1H2H3, ch.Hash())
 
 	fmt.Println("Child Hash:", ch.Hash())
-	fmt.Println("ch", countNodes(ch))
+	fmt.Println("ch", countNodes(ch, false, false))
 	fmt.Println("Parent Hash:", mt.Hash())
-	fmt.Println("mt", countNodes(mt))
+	fmt.Println("mt", countNodes(mt, false, false))
 
 	fmt.Println("Add key4 to child")
 	ch.Add(key4, key5)
 	require.Equal(t, H1H2, mt.Hash())
 	require.Equal(t, H1H2H3H4, ch.Hash())
 	fmt.Println("Child Hash:", ch.Hash())
-	fmt.Println("ch", countNodes(ch))
+	fmt.Println("ch", countNodes(ch, false, false))
 	fmt.Println("Parent Hash:", mt.Hash())
-	fmt.Println("mt", countNodes(mt))
+	fmt.Println("mt", countNodes(mt, false, false))
 	fmt.Println("Del key2 from child")
 	ch.Delete(key2)
-	fmt.Println("ch", countNodes(ch))
-	fmt.Println("mt", countNodes(mt))
+	fmt.Println("ch", countNodes(ch, false, false))
+	fmt.Println("mt", countNodes(mt, false, false))
 	fmt.Println("Child Hash:", ch.Hash())
 	fmt.Println("Parent Hash:", mt.Hash())
 	require.Equal(t, H1H2, mt.Hash())
@@ -377,11 +382,11 @@ func TestTrieSpecial(t *testing.T) { // nolint:paralleltest // Serial tests for 
 // var prepTrie *Trie
 var akbPrint bool = false
 
-func addKeyBatches(b *testing.B, mt *Trie, accounts acctGetter, totalBatches int, keyLength int, prepopulateCount int, skipCommit bool, batchSize int) ([]int, []int) {
-	fmt.Println("addKeyBatches: totalBatches", totalBatches, "keyLength", keyLength, "prepopulateCount", prepopulateCount, "skipCommit", skipCommit, "batchSize", batchSize)
+func addKeyBatches(b *testing.B, mt *Trie, accounts acctGetter, totalBatches int, keyLength int, prepopulateCount int, batchSize int, e eviction) ([]int, []int) {
+	fmt.Println("addKeyBatches: totalBatches", totalBatches, "keyLength", keyLength, "prepopulateCount", prepopulateCount, "batchSize", batchSize)
 	// prepopulate the trie
 	var times []int
-	var batchSizes []int
+	var pct []int
 	//	if prepTrie == nil {
 	if true {
 		if akbPrint {
@@ -396,15 +401,13 @@ func addKeyBatches(b *testing.B, mt *Trie, accounts acctGetter, totalBatches int
 				if akbPrint {
 					fmt.Printf("Prepopulated with %d accounts (%4.2f %%)\n", m, float64(m)/float64(prepopulateCount)*100)
 				}
-				if !skipCommit {
-					mt.Commit()
-					epochEnd := time.Now().Truncate(time.Millisecond)
-					var statsEnd = stats
-					timeConsumed := epochEnd.Sub(epochStart)
-					var statsDiff = statsEnd.diff(statsStart)
-					fmt.Println("time", timeConsumed, "new hash:", mt.root.getHash(), statsDiff.String(), "len(mt.dels):", len(mt.dels))
-					epochStart = time.Now().Truncate(time.Millisecond)
-				}
+				mt.Commit()
+				epochEnd := time.Now().Truncate(time.Millisecond)
+				var statsEnd = stats
+				timeConsumed := epochEnd.Sub(epochStart)
+				var statsDiff = statsEnd.diff(statsStart)
+				fmt.Println("time", timeConsumed, "new hash:", mt.root.getHash(), statsDiff.String(), "len(mt.dels):", len(mt.dels))
+				epochStart = time.Now().Truncate(time.Millisecond)
 			}
 		}
 		//		prepTrie = &Trie{store: mt.store, root: mt.root}
@@ -412,14 +415,6 @@ func addKeyBatches(b *testing.B, mt *Trie, accounts acctGetter, totalBatches int
 			fmt.Println("Finished prepopulating trie...")
 		}
 	}
-	//	timedTrie := Trie{store: prepTrie.store, root: prepTrie.root}
-	//warm up on one batch
-	//	for i := 0; i < batchSize; i++ {
-	//		timedTrie.Add(accounts.getAcct(), accounts.getAcct())
-	//	}
-	//	if !skipCommit {
-	//		timedTrie.Commit()
-	//	}
 
 	if b != nil {
 		b.ResetTimer()
@@ -430,8 +425,9 @@ func addKeyBatches(b *testing.B, mt *Trie, accounts acctGetter, totalBatches int
 		for i := 0; i < batchSize; i++ {
 			mt.Add(accounts.getAcct(), accounts.getAcct())
 		}
-		if !skipCommit {
-			mt.Commit()
+		mt.Commit()
+		if e != nil {
+			mt.root.evict(e)
 		}
 		epochEnd := time.Now().Truncate(time.Millisecond)
 		var statsEnd = stats
@@ -441,18 +437,18 @@ func addKeyBatches(b *testing.B, mt *Trie, accounts acctGetter, totalBatches int
 			fmt.Println("time", timeConsumed, "new hash:", mt.root.getHash(), statsDiff.String(), "len(mt.dels):", len(mt.dels))
 		}
 		epochStart = time.Now().Truncate(time.Millisecond)
-		if len(batchSizes) == 0 || int(100.0*float64(m+1)/float64(totalBatches)) != batchSizes[len(batchSizes)-1] {
+		if len(pct) == 0 || int(100.0*float64(m+1)/float64(totalBatches)) != pct[len(pct)-1] {
 			times = append(times, int(timeConsumed.Milliseconds()))
-			batchSizes = append(batchSizes, int(100.0*float64(m+1)/float64(totalBatches)))
+			pct = append(pct, int(100.0*float64(m+1)/float64(totalBatches)))
 			if akbPrint || true {
-				fmt.Println("times:", times, "batchSizes:", batchSizes, "m:", m, "batchSize:", batchSize)
+				fmt.Println("times:", times, "pct:", pct, "m:", m, "batchSize:", batchSize)
 			}
 		}
 	}
 	if b != nil {
 		b.StopTimer()
 	}
-	return times, batchSizes
+	return times, pct
 }
 func sum(data []int) (s int) {
 	for _, v := range data {
@@ -461,13 +457,26 @@ func sum(data []int) (s int) {
 	return
 }
 
-func keysPerSecond(t *testing.T, mt *Trie, accts acctGetter, batchSize int, treeSize int) ([]int, []int) {
+func keysPerSecond(t *testing.T, mt *Trie, accts acctGetter, batchSize int, treeSize int, e eviction) ([]int, []int) {
 	totalBatches := treeSize / batchSize
-	times, batchSizes := addKeyBatches(nil, mt, accts, totalBatches, 64, 0, false, batchSize)
+	times, pct := addKeyBatches(nil, mt, accts, totalBatches, 64, 0, batchSize, e)
 	kps := float64(batchSize) * float64(totalBatches) / float64(sum(times)) / float64(len(times))
 	avg := float64(sum(times)) / float64(len(times))
 	fmt.Println("treeSize:", treeSize, "batchSize:", batchSize, "totalBatches:", totalBatches, "kps:", kps, "avg round time:", avg, "ms")
-	return times, batchSizes
+	return times, pct
+}
+
+func arrayOfPerfs2(t *testing.T, ds *DataStore, label string) {
+	//    back := makeNullBackstore()
+	//    back := makeMemoryBackstore()
+	//    back := makeFileBackstore()
+	//    back := makePebbleBackstoreVFS()
+	back := makePebbleBackstoreDisk("pebble.test", false)
+	for i := 2; i < 50_000; i = i * 2 {
+		mt := MakeTrie(back) /// yes make the trie from scratch each time
+		times, pct := keysPerSecond(t, mt, acctsRand, i, 50*i, evictAll)
+		ds.AddLine(pct, times, label+string("_")+strconv.Itoa(i))
+	}
 }
 
 func arrayOfPerfs(t *testing.T, ds *DataStore, batchSize int, label string) {
@@ -477,8 +486,8 @@ func arrayOfPerfs(t *testing.T, ds *DataStore, batchSize int, label string) {
 	//    back := makePebbleBackstoreVFS()
 	back := makePebbleBackstoreDisk("/tmp/pebble/test/", true)
 	mt := MakeTrie(back)
-	times, batchSizes := keysPerSecond(t, mt, acctsRand, batchSize, 64*1_048_576)
-	ds.AddLine(batchSizes, times, label)
+	times, pct := keysPerSecond(t, mt, acctsRand, batchSize, 64*1_048_576, evictAll)
+	ds.AddLine(pct, times, label)
 }
 
 type LineData struct {
@@ -507,7 +516,7 @@ names = []
 		for j, b := range lineData.y {
 			yValues[j] = strconv.Itoa(int(b))
 		}
-		script += fmt.Sprintf("d%s_x = [%s]\n", lineData.label, strings.Join(xValues, ","))
+		script += fmt.Sprintf("d%s_x = [0.5 * a for a in [%s]]\n", lineData.label, strings.Join(xValues, ","))
 		script += fmt.Sprintf("d%s_y = [%s]\n", lineData.label, strings.Join(yValues, ","))
 		script += fmt.Sprintf("names.append([d%s_x, d%s_y, '%s'])\n", lineData.label, lineData.label, lineData.label)
 	}
@@ -526,12 +535,133 @@ for x, y, n in names:
 	}
 
 	script += `
-plt.xlabel('Percent of trie filled')
+plt.xlabel('Round')
 plt.ylabel('Round time (ms)')
 plt.savefig("image.jpg", dpi=300, bbox_inches='tight')
 `
 
 	return ioutil.WriteFile(filename, []byte(script), 0644)
+}
+func TestBackingTrieWriteKeys(t *testing.T) {
+	fmt.Println(t.Name())
+	back := makePebbleBackstoreDisk("pebble.test", false)
+	mt := MakeTrie(back)
+	writeKeys(mt, "keys.bin", 99_000, 64*1_048_576)
+}
+func TestBackingTrieCountNodes(t *testing.T) {
+	fmt.Println(t.Name())
+	back := makePebbleBackstoreDisk("pebble.test", false)
+	mt := MakeTrie(back)
+	fmt.Println("count:", countNodes(mt, true, false))
+}
+func TestSpewPebbleDisk(t *testing.T) {
+	fmt.Println(t.Name())
+	back := makePebbleBackstoreDisk("pebble.test", false)
+	iter := back.db.NewIter(nil)
+	for iter.SeekGE(nibbles{}); iter.Valid(); iter.Next() {
+		k := iter.Key()
+		fmt.Printf("len(k): %d k: %x\n", len(k), k)
+	}
+	back.close()
+
+	//	iter := d.NewIter(readOptions)
+	//	for iter.SeekGE(k); iter.Valid(); iter.Next() {
+	//		fmt.Printf("key=%q value=%q\n", iter.Key(), iter.Value())
+	//	}
+	//	return iter.Close()
+}
+func TestRealtimeSpeedsWithP64SetPerfEvict(t *testing.T) { //nolint:paralleltest // Serial tests for trie for the momen t
+	fmt.Println(t.Name())
+	akbPrint = false
+	resetPseudoRandomSeed()
+	ds := &DataStore{}
+	back := makePebbleBackstoreDisk("pebble.test", false)
+	acctRatio := makeAcctGetterRandomFromPoolFileRatio(25, 50_000, "keys.bin")
+	mt := MakeTrie(back) /// yes make the trie from scratch each time
+	var m runtime.MemStats
+	runtime.ReadMemStats(&m)
+	fmt.Printf("Alloc = %v MiB", bToMb(m.Alloc))
+	fmt.Printf("\tTotalAlloc = %v MiB", bToMb(m.TotalAlloc))
+	fmt.Printf("\tSys = %v MiB", bToMb(m.Sys))
+	fmt.Printf("\tNumGC = %v\n", m.NumGC)
+	for i := 4; i <= 9; i++ {
+		times, pct := keysPerSecond(t, mt, acctRatio, 16384, 15*16384, makeEvictLevel(i))
+		ds.AddLine(pct, times, string("P64_16384_evict_")+strconv.Itoa(i))
+
+		runtime.ReadMemStats(&m)
+		fmt.Printf("Levels deleted: %d\n", i)
+		fmt.Printf("Alloc = %v MiB", bToMb(m.Alloc))
+		fmt.Printf("\tTotalAlloc = %v MiB", bToMb(m.TotalAlloc))
+		fmt.Printf("\tSys = %v MiB", bToMb(m.Sys))
+		fmt.Printf("\tNumGC = %v\n", m.NumGC)
+	}
+	ds.DumpPythonScript("plot.py")
+	back.close()
+}
+func TestRealtimeSpeedsWithP64SetPerf(t *testing.T) { //nolint:paralleltest // Serial tests for trie for the momen t
+	fmt.Println(t.Name())
+	akbPrint = false
+	resetPseudoRandomSeed()
+	ds := &DataStore{}
+	back := makePebbleBackstoreDisk("pebble.test", false)
+	cpuprof, _ := os.Create("cpu.prof")
+	pprof.StartCPUProfile(cpuprof)
+	acctRatio := makeAcctGetterRandomFromPoolFileRatio(25, 50_000, "keys.bin")
+	mt := MakeTrie(back) /// yes make the trie from scratch each time
+	keysPerSecond(t, mt, acctRatio, 32768, 15*32768, makeEvictLevel(6))
+	//        ds.AddLine(pct, times, string("P64_")+strconv.Itoa(25)+string("_")+strconv.Itoa(i))
+	pprof.StopCPUProfile()
+	//	fmt.Println("mt", countNodes(mt))
+	cpuprof.Close()
+	runtime.GC()
+	memprof, _ := os.Create("mem.prof")
+	pprof.WriteHeapProfile(memprof)
+	memprof.Close()
+	ds.DumpPythonScript("plot.py")
+	back.close()
+}
+
+func TestRealtimeSpeedsWithP64Set5(t *testing.T) { //nolint:paralleltest // Serial tests for trie for the momen t
+	fmt.Println(t.Name())
+	akbPrint = false
+	resetPseudoRandomSeed()
+	ds := &DataStore{}
+	back := makePebbleBackstoreDisk("pebble.test", false)
+	for ratio := 0; ratio <= 100; ratio += 25 {
+		acctRatio := makeAcctGetterRandomFromPoolFileRatio(ratio, 49_000, "keys.bin")
+		for i := 8_192; i < 40_000; i = i * 2 {
+			fmt.Println("Preloading 5")
+			mt := MakeTrie(back) /// yes make the trie from scratch each time
+			mt.Preload(5)
+			//            debugTrie = true
+			times, pct := keysPerSecond(t, mt, acctRatio, i, 15*i, makeEvictLevel(5))
+			//            times, pct := keysPerSecond(t, mt, acctRatio, 2, 3, makeEvictLevel(5))
+			//            debugTrie = false
+			ds.AddLine(pct, times, string("P64_sp_Psreload5_Evict5_")+strconv.Itoa(ratio)+string("_")+strconv.Itoa(i))
+		}
+	}
+	ds.DumpPythonScript("plot.py")
+	back.close()
+}
+func TestRealtimeSpeeds(t *testing.T) { //nolint:paralleltest // Serial tests for trie for the momen t
+	fmt.Println(t.Name())
+	akbPrint = false
+	resetPseudoRandomSeed()
+	ds := &DataStore{}
+	//	/ds.AddLine(ds, []byte{7, 14, 21}, "secondLine")
+	//    arrayOfPerfs(t, ds,524288, string("KPB_524288_1"))
+	//    arrayOfPerfs(t, ds,131072, string("KPB_131072_1"))
+	//    arrayOfPerfs(t, ds,65536, string("KPB_65536_1"))
+	//    arrayOfPerfs(t, ds, 262144, string("KPB_262144_1"))
+	//    arrayOfPerfs(t, ds, 262144, string("KPB_262144_1"))
+	arrayOfPerfs2(t, ds, string("Trie64MiB"))
+
+	err := ds.DumpPythonScript("plot.py")
+	if err != nil {
+		fmt.Println("Error generating Python script:", err)
+	}
+
+	return
 }
 
 func TestSpeeds(t *testing.T) { //nolint:paralleltest // Serial tests for trie for the momen t
@@ -546,6 +676,7 @@ func TestSpeeds(t *testing.T) { //nolint:paralleltest // Serial tests for trie f
 	//    arrayOfPerfs(t, ds,131072, string("KPB_131072_1"))
 	//    arrayOfPerfs(t, ds,65536, string("KPB_65536_1"))
 	//    arrayOfPerfs(t, ds, 262144, string("KPB_262144_1"))
+	//    arrayOfPerfs(t, ds, 262144, string("KPB_262144_1"))
 	arrayOfPerfs(t, ds, 262144, string("KPB_262144_1"))
 
 	err := ds.DumpPythonScript("plot.py")
@@ -559,73 +690,31 @@ func TestSpeeds(t *testing.T) { //nolint:paralleltest // Serial tests for trie f
 func BenchmarkTrieAddFromRandomNullStore250(b *testing.B) {
 	back := makeNullBackstore()
 	mt := MakeTrie(back)
-	addKeyBatches(b, mt, acctsRand, b.N, 64, 64*1_048_576, false, 250_000)
+	addKeyBatches(b, mt, acctsRand, b.N, 63, 64*1_048_576, 250_000, evictNone)
 	mt.store.close()
 }
 func BenchmarkTrieAddFrom64KiB32NullCommit25(b *testing.B) {
 	back := makeNullBackstore()
 	mt := MakeTrie(back)
-	addKeyBatches(b, mt, accts64KiB, b.N, 32, 1*65_536, false, 25_000)
-	mt.store.close()
-}
-func BenchmarkTrieAddFrom64KiB32NoCommit25(b *testing.B) {
-	back := makeNullBackstore()
-	mt := MakeTrie(back)
-	addKeyBatches(b, mt, accts64KiB, b.N, 32, 1*65_536, true, 25_000)
+	addKeyBatches(b, mt, accts64KiB, b.N, 32, 1*65_536, 25_000, evictNone)
 	mt.store.close()
 }
 func BenchmarkTrieAddFrom64KiB32Disk25(b *testing.B) {
 	back := makePebbleBackstoreDisk("pebble2db", true)
 	mt := MakeTrie(back)
-	addKeyBatches(b, mt, accts64KiB, b.N, 32, 1*65_536, false, 25_000)
+	addKeyBatches(b, mt, accts64KiB, b.N, 32, 1*65_536, 25_000, evictNone)
 	mt.store.close()
 }
 func BenchmarkTrieAddFrom64KiB64InMem25(b *testing.B) {
 	back := makePebbleBackstoreVFS()
 	mt := MakeTrie(back)
-	addKeyBatches(b, mt, accts64KiB, b.N, 64, 1*65_536, false, 25_000)
+	addKeyBatches(b, mt, accts64KiB, b.N, 64, 1*65_536, 25_000, evictNone)
 	mt.store.close()
 }
 func BenchmarkTrieAddFrom64KiB32InMem25(b *testing.B) {
 	back := makePebbleBackstoreVFS()
 	mt := MakeTrie(back)
-	addKeyBatches(b, mt, accts64KiB, b.N, 32, 1*65_536, false, 25_000)
-	mt.store.close()
-}
-func skipBenchmarkTrieAddFrom64MiB32NoCommit250(b *testing.B) {
-	back := makePebbleBackstoreVFS()
-	mt := MakeTrie(back)
-	if accts64MiB == nil {
-		accts64MiB = makeAcctGetterRandomFromPool(1_048_576*64, 64)
-	}
-	addKeyBatches(b, mt, accts64MiB, b.N, 32, 64*1_048_576, true, 250_000)
-	mt.store.close()
-}
-func skipBenchmarkTrieAddFrom64MiB32Disk250(b *testing.B) {
-	back := makePebbleBackstoreDisk("pebble2db", true)
-	mt := MakeTrie(back)
-	if accts64MiB == nil {
-		accts64MiB = makeAcctGetterRandomFromPool(1_048_576*64, 64)
-	}
-	addKeyBatches(b, mt, accts64MiB, b.N, 32, 64*1_048_576, false, 250_000)
-	mt.store.close()
-}
-func BenchmarkTrieAddFrom32MiB32NoCommit250(b *testing.B) {
-	back := makePebbleBackstoreVFS()
-	mt := MakeTrie(back)
-	if accts32MiB == nil {
-		accts32MiB = makeAcctGetterRandomFromPool(1_048_576*32, 64)
-	}
-	addKeyBatches(b, mt, accts32MiB, b.N, 32, 32*1_048_576, true, 250_000)
-	mt.store.close()
-}
-func BenchmarkTrieAddFrom16MiB32NoCommit250(b *testing.B) {
-	back := makePebbleBackstoreVFS()
-	mt := MakeTrie(back)
-	if accts16MiB == nil {
-		accts16MiB = makeAcctGetterRandomFromPool(1_048_576*16, 64)
-	}
-	addKeyBatches(b, mt, accts16MiB, b.N, 32, 16*1_048_576, true, 250_000)
+	addKeyBatches(b, mt, accts64KiB, b.N, 32, 1*65_536, 25_000, evictNone)
 	mt.store.close()
 }
 func BenchmarkTrieAddFrom16MiB32Disk250(b *testing.B) {
@@ -634,49 +723,31 @@ func BenchmarkTrieAddFrom16MiB32Disk250(b *testing.B) {
 	if accts16MiB == nil {
 		accts16MiB = makeAcctGetterRandomFromPool(1_048_576*16, 64)
 	}
-	addKeyBatches(b, mt, accts16MiB, b.N, 32, 16*1_048_576, false, 250_000)
-	mt.store.close()
-}
-func BenchmarkTrieAddFrom8MiB32NoCommit250(b *testing.B) {
-	back := makePebbleBackstoreVFS()
-	mt := MakeTrie(back)
-	addKeyBatches(b, mt, accts8MiB, b.N, 32, 8*1_048_576, true, 250_000)
+	addKeyBatches(b, mt, accts16MiB, b.N, 32, 16*1_048_576, 250_000, evictNone)
 	mt.store.close()
 }
 func BenchmarkTrieAddFrom8MiB32Disk250(b *testing.B) {
 	back := makePebbleBackstoreDisk("pebble2db", true)
 	mt := MakeTrie(back)
-	addKeyBatches(b, mt, accts8MiB, b.N, 32, 8*1_048_576, false, 250_000)
-	mt.store.close()
-}
-func BenchmarkTrieAddFrom4MiB32NoCommit250(b *testing.B) {
-	back := makePebbleBackstoreVFS()
-	mt := MakeTrie(back)
-	addKeyBatches(b, mt, accts4MiB, b.N, 32, 4*1_048_576, true, 250_000)
+	addKeyBatches(b, mt, accts8MiB, b.N, 32, 8*1_048_576, 250_000, evictNone)
 	mt.store.close()
 }
 func BenchmarkTrieAddFrom4MiB32Disk250(b *testing.B) {
 	back := makePebbleBackstoreDisk("pebble2db", true)
 	mt := MakeTrie(back)
-	addKeyBatches(b, mt, accts4MiB, b.N, 32, 4*1_048_576, false, 250_000)
-	mt.store.close()
-}
-func BenchmarkTrieAddFrom2MiB32NoCommit250(b *testing.B) {
-	back := makePebbleBackstoreVFS()
-	mt := MakeTrie(back)
-	addKeyBatches(b, mt, accts2MiB, b.N, 32, 2*1_048_576, true, 250_000)
+	addKeyBatches(b, mt, accts4MiB, b.N, 32, 4*1_048_576, 250_000, evictNone)
 	mt.store.close()
 }
 func BenchmarkTrieAddFrom2MiB32InMem250(b *testing.B) {
 	back := makePebbleBackstoreVFS()
 	mt := MakeTrie(back)
-	addKeyBatches(b, mt, accts2MiB, b.N, 32, 2*1_048_576, false, 250_000)
+	addKeyBatches(b, mt, accts2MiB, b.N, 32, 2*1_048_576, 250_000, evictNone)
 	mt.store.close()
 }
 func BenchmarkTrieAddFrom1MiB32InMem250(b *testing.B) {
 	back := makePebbleBackstoreVFS()
 	mt := MakeTrie(back)
-	addKeyBatches(b, mt, accts1MiB, b.N, 32, 1*1_048_576, false, 250_000)
+	addKeyBatches(b, mt, accts1MiB, b.N, 32, 1*1_048_576, 250_000, evictNone)
 	mt.store.close()
 }
 
@@ -703,6 +774,59 @@ func makeAcctGetterRandomEachTime(keyLength int) *acctGetterRandomEachTime {
 	return acret
 }
 
+type acctGetterRandomFromPoolFileRatio struct {
+	acctGetter
+	acctPool *acctGetterRandomFromPoolFile
+	acctr    *acctGetterRandomEachTime
+	ratio    int
+}
+
+func (ac *acctGetterRandomFromPoolFileRatio) getAcct() []byte {
+	if int(pseudoRand()%100) <= ac.ratio {
+		return ac.acctr.getAcct()
+	}
+	return ac.acctPool.getAcct()
+}
+
+// ratio = 1 means all new/random keys
+func makeAcctGetterRandomFromPoolFileRatio(ratio int, acctCount int, filename string) *acctGetterRandomFromPoolFileRatio {
+	agret := makeAcctGetterRandomEachTime(64)
+	agrfprf := makeAcctGetterRandomFromPoolFile(acctCount, filename)
+
+	return &acctGetterRandomFromPoolFileRatio{acctPool: agrfprf, acctr: agret, ratio: ratio}
+}
+
+type acctGetterRandomFromPoolFile struct {
+	acctGetter
+	acct [][]byte
+}
+
+func (ac *acctGetterRandomFromPoolFile) getAcct() []byte {
+	randK := int(pseudoRand() % uint32(len(ac.acct)))
+	return ac.acct[randK]
+}
+func makeAcctGetterRandomFromPoolFile(acctCount int, filename string) *acctGetterRandomFromPoolFile {
+	f, _ := os.Open(filename)
+	f.Seek(0, 0)
+	dec := gob.NewDecoder(f)
+	var acct [][]byte
+	fmt.Println("len: ", len(acct))
+	for {
+		var b []byte
+		if err := dec.Decode(&b); err != nil {
+			if err.Error() == "EOF" {
+				break
+			}
+		}
+		acct = append(acct, b)
+		if len(acct) >= acctCount {
+			break
+		}
+	}
+	fmt.Printf("Loaded %d accounts from %s\n", len(acct), filename)
+	return &acctGetterRandomFromPoolFile{acct: acct}
+}
+
 type acctGetterRandomFromPool struct {
 	acctGetter
 	acct      []byte
@@ -722,23 +846,43 @@ func makeAcctGetterRandomFromPool(acctCount int, keyLength int) *acctGetterRando
 	return &acctGetterRandomFromPool{acct: acct, keyLength: keyLength}
 }
 
-func addKeysNoopEvict(mt *Trie, accounts acctGetter, totalBatches int, keyLength int, prepopulateCount int, skipCommit bool, batchSize int) {
+type eviction func(n node) bool
+
+func evictAll(n node) bool {
+	return true
+}
+func evictNone(n node) bool {
+	return false
+}
+func makeEvictLevel(evictLevel int) func(n node) bool {
+	e := func() func(n node) bool {
+		_e := func(n node) bool {
+			if bn, ok := n.(*branchNode); ok {
+				if len(bn.key) >= evictLevel {
+					return true
+				}
+			}
+			return false
+		}
+		return _e
+	}()
+	return e
+}
+func addKeysNoopEvict(mt *Trie, accounts acctGetter, totalBatches int, keyLength int, prepopulateCount int, batchSize int, e eviction) {
 	fmt.Println("Prepopulating the trie with ", prepopulateCount, " accounts")
-	fmt.Println("mt", countNodes(mt))
+	fmt.Println("mt", countNodes(mt, false, false))
+	mt.Hash()
+	fmt.Printf("MakeTrie: %v\n", mt.root.getHash())
 
 	for m := 0; m < prepopulateCount; m++ {
 		k := accounts.getAcct()
 		mt.Add(k, k) // just add the key as the value
 		if m%(prepopulateCount/10) == (prepopulateCount/10)-1 {
 			fmt.Printf("Prepopulated with %d accounts (%4.2f %%)\n", m, float64(m)/float64(prepopulateCount)*100)
-			if !skipCommit {
-				mt.Commit()
-			}
+			mt.Commit()
 		}
 	}
-	if !skipCommit {
-		mt.Commit()
-	}
+	mt.Commit()
 	//	fmt.Println("mt", countNodes(mt))
 
 	cpuprof, _ := os.Create("cpu.prof")
@@ -746,33 +890,20 @@ func addKeysNoopEvict(mt *Trie, accounts acctGetter, totalBatches int, keyLength
 	fmt.Println("Adding keys (batch size", batchSize, ", totalBatches", totalBatches, ", total keys:", totalBatches*batchSize, ")")
 	for m := 0; m < totalBatches; m++ {
 
+		fmt.Println("mt", countNodes(mt, false, false))
 		epochStart := time.Now().Truncate(time.Millisecond)
 		var statsStart = stats
 
 		for i := 0; i < batchSize; i++ {
 			mt.Add(accounts.getAcct(), accounts.getAcct())
 		}
-		if !skipCommit {
-			fmt.Println("Committing", batchSize, "accounts")
-			mt.Commit()
+		fmt.Println("Committing", batchSize, "accounts")
+		mt.Commit()
+		if e != nil {
+			mt.root.evict(e)
 		}
-
-		//        shouldEvict := func(n node) bool {
-		//			if _, ok := n.(*branchNode); ok {
-		//				bn := n.(*branchNode)
-		//				for i := 0; i < 16; i++ {
-		//					if _, ok2 := bn.children[i].(*branchNode); ok2 {
-		//						return false
-		//					}
-		//				}
-		//				if rand.Intn(10) == 1 {
-		//					return false
-		//				}
-		//			}
-		//			return false
-		//		}
-		//		fmt.Println("Evicting")
-		//		mt.root.evict(shouldEvict)
+		if true {
+		}
 
 		epochEnd := time.Now().Truncate(time.Millisecond)
 		var statsEnd = stats
@@ -803,6 +934,38 @@ var accts32MiB acctGetter
 var accts64MiB acctGetter
 var acctsRand acctGetter = makeAcctGetterRandomEachTime(64)
 
+func resetPseudoRandomSeed() {
+	x = x | uint32(time.Now().Unix())
+}
+
+func TestTrieAdd5KeysToPebbleDisk(t *testing.T) { // nolint:paralleltest // Serial tests for trie for the moment
+	partitiontest.PartitionTest(t)
+	// t.Parallel()
+	fmt.Println(t.Name())
+	//	back := makePebbleBackstoreVFS()
+	resetPseudoRandomSeed()
+	back := makePebbleBackstoreDisk("pebble.test", false)
+	//	back := makeNullBackstore()
+	//	debugTrie = true
+	mt := MakeTrie(back)
+	addKeysNoopEvict(mt, acctsRand, 3, 64, 0, 2, evictNone)
+	mt.store.close()
+}
+func TestTrieAdd8MiBKeysToPebbleDisk(t *testing.T) { // nolint:paralleltest // Serial tests for trie for the moment
+	partitiontest.PartitionTest(t)
+	// t.Parallel()
+	resetPseudoRandomSeed()
+	fmt.Println(t.Name())
+	//	back := makePebbleBackstoreVFS()
+	back := makePebbleBackstoreDisk("pebble.test", false)
+	//	back := makeNullBackstore()
+	mt := MakeTrie(back)
+	//    debugTrie = true
+	//	addKeysNoopEvict(mt, acctsRand, 6400, 64, 0, false, 1_048_576/24)
+	addKeysNoopEvict(mt, acctsRand, 8*1_048_576/100, 64, 0, 100, evictNone)
+	mt.store.close()
+}
+
 func TestTrieAddFromEmptyRandomNullStore250(t *testing.T) { // nolint:paralleltest // Serial tests for trie for the moment
 	partitiontest.PartitionTest(t)
 	// t.Parallel()
@@ -811,7 +974,7 @@ func TestTrieAddFromEmptyRandomNullStore250(t *testing.T) { // nolint:parallelte
 	back := makeNullBackstore()
 	mt := MakeTrie(back)
 	//    debugTrie = true
-	addKeysNoopEvict(mt, acctsRand, 25, 64, 1_048_576*0, false, 1)
+	addKeysNoopEvict(mt, acctsRand, 25, 64, 1_048_576*0, 1, evictNone)
 	mt.store.close()
 }
 
@@ -822,7 +985,7 @@ func TestTrieAddFromRandomNullStore250(t *testing.T) { // nolint:paralleltest //
 	//	back := makePebbleBackstoreVFS()
 	back := makeNullBackstore()
 	mt := MakeTrie(back)
-	addKeysNoopEvict(mt, acctsRand, 10, 64, 1_048_576*64, false, 250_000)
+	addKeysNoopEvict(mt, acctsRand, 10, 64, 1_048_576*64, 250_000, evictNone)
 	mt.store.close()
 }
 
@@ -831,7 +994,7 @@ func TestTrieBobInMem(t *testing.T) { // nolint:paralleltest // Serial tests for
 	// t.Parallel()
 	back := makePebbleBackstoreVFS()
 	mt := MakeTrie(back)
-	addKeysNoopEvict(mt, accts1KiB, 20, 64, 1_048_576, false, 250_000)
+	addKeysNoopEvict(mt, accts1KiB, 20, 64, 1_048_576, 250_000, evictNone)
 	mt.store.close()
 }
 func TestTrieAdd10Batches250kIntoPreloadPebbleTest(t *testing.T) { // nolint:paralleltest // Serial tests for trie for the moment
@@ -840,8 +1003,7 @@ func TestTrieAdd10Batches250kIntoPreloadPebbleTest(t *testing.T) { // nolint:par
 	back := makePebbleBackstoreDisk("pebble.test", false)
 	mt := MakeTrie(back)
 	fmt.Println("Preloading")
-	mt.root.preload(back)
-	addKeysNoopEvict(mt, acctsRand, 10, 64, 0, false, 250_000)
+	addKeysNoopEvict(mt, acctsRand, 10, 64, 0, 250_000, evictNone)
 	mt.store.close()
 }
 func TestTrieAdd10Batches250kIntoPebbleTest(t *testing.T) { // nolint:paralleltest // Serial tests for trie for the moment
@@ -849,7 +1011,7 @@ func TestTrieAdd10Batches250kIntoPebbleTest(t *testing.T) { // nolint:parallelte
 	// t.Parallel()
 	back := makePebbleBackstoreDisk("pebble.test", false)
 	mt := MakeTrie(back)
-	addKeysNoopEvict(mt, acctsRand, 10, 64, 0, false, 250_000)
+	addKeysNoopEvict(mt, acctsRand, 10, 64, 0, 250_000, evictNone)
 	mt.store.close()
 }
 func TestTrieOriginalAddFrom2MiBInMem(t *testing.T) { // nolint:paralleltest // Serial tests for trie for the moment
@@ -858,7 +1020,7 @@ func TestTrieOriginalAddFrom2MiBInMem(t *testing.T) { // nolint:paralleltest // 
 	fmt.Println(t.Name())
 	back := makePebbleBackstoreVFS()
 	mt := MakeTrie(back)
-	addKeysNoopEvict(mt, accts2MiB, 5, 32, 1_048_576*2, false, 250_000)
+	addKeysNoopEvict(mt, accts2MiB, 5, 32, 1_048_576*2, 250_000, evictNone)
 	mt.store.close()
 }
 func TestTrieProfileAdd200RoundsOfRandom250kNull(t *testing.T) { // nolint:paralleltest // Serial tests for trie for the moment
@@ -868,7 +1030,7 @@ func TestTrieProfileAdd200RoundsOfRandom250kNull(t *testing.T) { // nolint:paral
 	//	back := makePebbleBackstoreVFS()
 	back := makeNullBackstore()
 	mt := MakeTrie(back)
-	addKeysNoopEvict(mt, acctsRand, 200, 64, 1_048_576*0, false, 250_000)
+	addKeysNoopEvict(mt, acctsRand, 200, 64, 1_048_576*0, 250_000, evictNone)
 	mt.store.close()
 }
 func TestTrieProfileAdd20RoundsOf250kInMem(t *testing.T) { // nolint:paralleltest // Serial tests for trie for the moment
@@ -878,7 +1040,7 @@ func TestTrieProfileAdd20RoundsOf250kInMem(t *testing.T) { // nolint:paralleltes
 	//	back := makePebbleBackstoreVFS()
 	back := makeNullBackstore()
 	mt := MakeTrie(back)
-	addKeysNoopEvict(mt, accts8MiB, 20, 64, 1_048_576*0, false, 250_000)
+	addKeysNoopEvict(mt, accts8MiB, 20, 64, 1_048_576*0, 250_000, evictNone)
 	mt.store.close()
 }
 func TestTrieOriginalAddFrom2MiBDisk(t *testing.T) { // nolint:paralleltest // Serial tests for trie for the moment
@@ -887,7 +1049,7 @@ func TestTrieOriginalAddFrom2MiBDisk(t *testing.T) { // nolint:paralleltest // S
 	fmt.Println(t.Name())
 	back := makePebbleBackstoreDisk("pebble.test", true)
 	mt := MakeTrie(back)
-	addKeysNoopEvict(mt, accts2MiB, 5, 32, 1_048_576*2, false, 250_000)
+	addKeysNoopEvict(mt, accts2MiB, 5, 32, 1_048_576*2, 250_000, evictNone)
 	mt.store.close()
 }
 func TestTrieCreate16MiBDisk(t *testing.T) { // nolint:paralleltest // Serial tests for trie for the moment
@@ -898,7 +1060,7 @@ func TestTrieCreate16MiBDisk(t *testing.T) { // nolint:paralleltest // Serial te
 	}
 	back := makePebbleBackstoreDisk("pebble.test", true)
 	mt := MakeTrie(back)
-	addKeysNoopEvict(mt, accts16MiB, 0, 32, 1_048_576*16, false, 250_000)
+	addKeysNoopEvict(mt, accts16MiB, 0, 32, 1_048_576*16, 250_000, evictNone)
 	mt.store.close()
 }
 
@@ -907,7 +1069,7 @@ func TestTrieAddFrom1MiBDisk(t *testing.T) { // nolint:paralleltest // Serial te
 	// t.Parallel()
 	back := makePebbleBackstoreDisk("pebble2db", true)
 	mt := MakeTrie(back)
-	addKeysNoopEvict(mt, accts1MiB, 5, 32, 1_048_576*1, false, 104_857)
+	addKeysNoopEvict(mt, accts1MiB, 5, 32, 1_048_576*1, 104_857, evictNone)
 	mt.store.close()
 }
 func TestTrieAddFrom4MiBDisk(t *testing.T) { // nolint:paralleltest // Serial tests for trie for the moment
@@ -915,7 +1077,7 @@ func TestTrieAddFrom4MiBDisk(t *testing.T) { // nolint:paralleltest // Serial te
 	// t.Parallel()
 	back := makePebbleBackstoreDisk("pebble2db", true)
 	mt := MakeTrie(back)
-	addKeysNoopEvict(mt, accts4MiB, 5, 32, 1_048_576*4, false, 104_857)
+	addKeysNoopEvict(mt, accts4MiB, 5, 32, 1_048_576*4, 104_857, evictNone)
 	mt.store.close()
 }
 func TestTrieAddFrom1MiB(t *testing.T) { // nolint:paralleltest // Serial tests for trie for the moment
@@ -923,46 +1085,32 @@ func TestTrieAddFrom1MiB(t *testing.T) { // nolint:paralleltest // Serial tests 
 	// t.Parallel()
 	back := makePebbleBackstoreVFS()
 	mt := MakeTrie(back)
-	addKeysNoopEvict(mt, accts1MiB, 5, 32, 1_048_576*1, false, 104_857)
+	addKeysNoopEvict(mt, accts1MiB, 5, 32, 1_048_576*1, 104_857, evictNone)
 	mt.store.close()
 }
-func countDBNodes(store backing, mt *Trie) {
-	var nc struct {
-		branches int
-		leaves   int
-		exts     int
-	}
-	l := func() func(n node) {
-		innerCount := func(n node) {
-			switch n.(type) {
-			case *branchNode:
-				nc.branches++
-			case *leafNode:
-				nc.leaves++
-			case *extensionNode:
-				nc.exts++
-			}
-		}
-		return innerCount
-	}()
-
-	fmt.Println("Preloading tree")
-	mt.root.preload(store)
-	fmt.Println("Counting nodes")
-	mt.root.lambda(l)
-	fmt.Println("Branches", nc.branches)
-	fmt.Println("Leaves", nc.leaves)
-	fmt.Println("Exts", nc.exts)
-	fmt.Println("Total", nc.branches+nc.leaves+nc.exts)
-}
-func TestCountDBNodes(t *testing.T) { // nolint:paralleltest // Serial tests for trie for the moment
+func TestTriePreload(t *testing.T) { // nolint:paralleltest // Serial tests for trie for the moment
 	partitiontest.PartitionTest(t)
 	// t.Parallel()
-	//	back := makePebbleBackstoreDisk("pebble.2648983", false)
 	back := makePebbleBackstoreDisk("pebble.test", false)
 	mt := MakeTrie(back)
-	countDBNodes(back, mt)
-	mt.store.close()
+	var m runtime.MemStats
+	for i := 0; i <= 5; i++ {
+		runtime.GC()
+		runtime.ReadMemStats(&m)
+		fmt.Printf("Alloc = %v MiB", bToMb(m.Alloc))
+		fmt.Printf("\tTotalAlloc = %v MiB", bToMb(m.TotalAlloc))
+		fmt.Printf("\tSys = %v MiB", bToMb(m.Sys))
+		fmt.Printf("\tNumGC = %v\n", m.NumGC)
+		fmt.Println("before preload", i, ", trie: ", countNodes(mt, false, true))
+		mt.Preload(i)
+		runtime.GC()
+		runtime.ReadMemStats(&m)
+		fmt.Printf("Alloc = %v MiB", bToMb(m.Alloc))
+		fmt.Printf("\tTotalAlloc = %v MiB", bToMb(m.TotalAlloc))
+		fmt.Printf("\tSys = %v MiB", bToMb(m.Sys))
+		fmt.Printf("\tNumGC = %v\n", m.NumGC)
+		fmt.Println("after preload", i, ", trie: ", countNodes(mt, false, true))
+	}
 }
 
 func makebacking(cd crypto.Digest) node {
@@ -1433,14 +1581,60 @@ func dotGraphHelper(mt *Trie, n node, path nibbles) string {
 	}
 }
 
-//	returns a string with the number of nodes in the trie but
-//
-// does not follow parent nodes or load backing nodes
-func countNodes(mt *Trie) string {
+func writeKeys(mt *Trie, filename string, keysToWrite int, trieSize int) {
+	var buf bytes.Buffer
+	enc := gob.NewEncoder(&buf)
+	f, _ := os.Create(filename)
+	defer f.Close()
+
+	var wrote int
+	write := func() func(n node) {
+		innerCount := func(n node) {
+			switch n.(type) {
+			case *branchNode:
+				bn := n.(*branchNode)
+				if !bn.valueHash.IsZero() {
+					rand := int(uint32(pseudoRand()) % uint32(trieSize))
+					if rand < keysToWrite {
+						if wrote%(keysToWrite/10) == 0 {
+							fmt.Printf("wrote %d keys\n", wrote)
+						}
+						wrote++
+						if wrote < keysToWrite {
+							enc.Encode(bn.key)
+							f.Write(buf.Bytes())
+							buf.Reset()
+						}
+					}
+				}
+			case *leafNode:
+				ln := n.(*leafNode)
+				rand := int(uint32(pseudoRand()) % uint32(trieSize))
+				if rand < keysToWrite {
+					if wrote%(keysToWrite/10) == 0 {
+						fmt.Printf("wrote %d keys\n", wrote)
+					}
+					wrote++
+					if wrote < keysToWrite {
+						enc.Encode(append(ln.key[:], ln.keyEnd...))
+						f.Write(buf.Bytes())
+						buf.Reset()
+					}
+				}
+			}
+		}
+		return innerCount
+	}()
+	mt.root.lambda(write, mt.store)
+}
+
+// returns a string with the number of nodes in the trie
+func countNodes(mt *Trie, follow bool, mem bool) string {
 	if mt.root == nil {
 		return "Empty trie"
 	}
 	var nc struct {
+		total    int
 		branches int
 		leaves   int
 		exts     int
@@ -1468,43 +1662,60 @@ func countNodes(mt *Trie) string {
 			case *backingNode:
 				nc.backings++
 			}
-		}
-		return innerCount
-	}()
-	mt.root.lambda(count)
-
-	var nmem struct {
-		branches int
-		leaves   int
-		exts     int
-		parents  int
-		backings int
-	}
-
-	mem := func() func(n node) {
-		innerCount := func(n node) {
-			switch v := n.(type) {
-			//estimates
-			case *branchNode:
-				nmem.branches += 16*16 + 32 + 24 + len(v.key) + 8 + 32
-			case *leafNode:
-				nmem.leaves += 24 + len(v.key) + 24 + len(v.keyEnd) + 32 + 8 + 32
-			case *extensionNode:
-				nmem.exts += 24 + len(v.key) + 24 + len(v.sharedKey) + 8 + 32
-			case *parent:
-				nmem.parents += 8
-			case *backingNode:
-				nmem.backings += len(v.key) + 8 + 32
+			nc.total++
+			if nc.total%1_000_000 == 0 {
+				fmt.Printf("counting nodes: %d\n", nc.total)
 			}
 		}
 		return innerCount
 	}()
-	mt.root.lambda(mem)
+	if follow {
+		mt.root.lambda(count, mt.store)
+	} else {
+		mt.root.lambda(count, nil)
+	}
 
-	return fmt.Sprintf("[nodes: total %d / valued %d (branches: %d, leaves: %d, exts: %d, parents: %d, backings: %d), mem: total %d (branches: %d, leaves: %d, exts: %d, parents: %d, backings: %d), len(dels):%d]",
+	countString := fmt.Sprintf("[nodes: total %d / valued %d (branches: %d, leaves: %d, exts: %d, parents: %d, backings: %d), len(dels):%d]",
 		nc.branches+nc.leaves+nc.exts+nc.parents, nc.values,
-		nc.branches, nc.leaves, nc.exts, nc.parents, nc.backings,
-		nmem.branches+nmem.leaves+nmem.exts+nmem.parents,
-		nmem.branches, nmem.leaves, nmem.exts, nmem.parents, nmem.backings, len(mt.dels))
+		nc.branches, nc.leaves, nc.exts, nc.parents, nc.backings, len(mt.dels))
 
+	if mem {
+		var nmem struct {
+			branches int
+			leaves   int
+			exts     int
+			parents  int
+			backings int
+		}
+
+		memfn := func() func(n node) {
+			innerCount := func(n node) {
+				switch v := n.(type) {
+				//estimates
+				case *branchNode:
+					nmem.branches += 16*16 + 32 + 24 + len(v.key) + 8 + 32
+				case *leafNode:
+					nmem.leaves += 24 + len(v.key) + 24 + len(v.keyEnd) + 32 + 8 + 32
+				case *extensionNode:
+					nmem.exts += 24 + len(v.key) + 24 + len(v.sharedKey) + 8 + 32
+				case *parent:
+					nmem.parents += 8
+				case *backingNode:
+					nmem.backings += len(v.key) + 8 + 32
+				}
+			}
+			return innerCount
+		}()
+
+		if follow {
+			mt.root.lambda(memfn, mt.store)
+		} else {
+			mt.root.lambda(memfn, nil)
+		}
+		memString := fmt.Sprintf("mem: total %d (branches: %d, leaves: %d, exts: %d, parents: %d, backings: %d)",
+			nmem.branches+nmem.leaves+nmem.exts+nmem.parents,
+			nmem.branches, nmem.leaves, nmem.exts, nmem.parents, nmem.backings)
+		return countString + " " + memString
+	}
+	return countString
 }

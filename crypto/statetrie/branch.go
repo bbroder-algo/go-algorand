@@ -236,6 +236,10 @@ func deserializeBranchNode(data []byte, key nibbles) *branchNode {
 	return makeBranchNode(children, valueHash, key)
 }
 
+func (bn *branchNode) setHash(hash crypto.Digest) {
+	bn.hash = hash
+}
+
 var bnbuffer bytes.Buffer
 
 func (bn *branchNode) serialize() ([]byte, error) {
@@ -285,20 +289,19 @@ func (bn *branchNode) evict(eviction func(node) bool) {
 		}
 	}
 }
-func (bn *branchNode) preload(store backing) node {
+func (bn *branchNode) preload(store backing, length int) node {
 	for i := 0; i < 16; i++ {
 		if bn.children[i] != nil {
-			bn.children[i] = bn.children[i].preload(store)
-			bn.children[i].preload(store)
+			bn.children[i] = bn.children[i].preload(store, length)
 		}
 	}
 	return bn
 }
-func (bn *branchNode) lambda(l func(node)) {
+func (bn *branchNode) lambda(l func(node), store backing) {
 	l(bn)
 	for i := 0; i < 16; i++ {
 		if bn.children[i] != nil {
-			bn.children[i].lambda(l)
+			bn.children[i].lambda(l, store)
 		}
 	}
 }

@@ -40,14 +40,22 @@ func makeBackingNode(hash crypto.Digest, key nibbles) *backingNode {
 	copy(ba.key, key)
 	return ba
 }
+func (ba *backingNode) setHash(hash crypto.Digest) {
+	ba.hash = hash
+}
+func (ba *backingNode) get(store backing) node {
+	n := store.get(ba.key)
+	n.setHash(ba.hash)
+	return n
+}
 func (ba *backingNode) add(mt *Trie, pathKey nibbles, remainingKey nibbles, valueHash crypto.Digest) (node, error) {
-	return mt.store.get(pathKey).add(mt, pathKey, remainingKey, valueHash)
+	return ba.get(mt.store).add(mt, pathKey, remainingKey, valueHash)
 }
 func (ba *backingNode) delete(mt *Trie, pathKey nibbles, remainingKey nibbles) (node, bool, error) {
-	return mt.store.get(pathKey).delete(mt, pathKey, remainingKey)
+	return ba.get(mt.store).delete(mt, pathKey, remainingKey)
 }
 func (ba *backingNode) raise(mt *Trie, prefix nibbles, key nibbles) node {
-	return mt.store.get(key).raise(mt, prefix, key)
+	return ba.get(mt.store).raise(mt, prefix, key)
 }
 func (ba *backingNode) hashingCommit(store backing) error {
 	return nil
@@ -56,10 +64,17 @@ func (ba *backingNode) hashing() error {
 	return nil
 }
 func (ba *backingNode) evict(eviction func(node) bool) {}
-func (ba *backingNode) preload(store backing) node {
-	return store.get(ba.key)
+func (ba *backingNode) preload(store backing, length int) node {
+	if len(ba.key) <= length {
+		return ba.get(store).preload(store, length)
+	}
+	return ba
 }
-func (ba *backingNode) lambda(l func(node)) {
+func (ba *backingNode) lambda(l func(node), store backing) {
+	if store != nil {
+		ba.get(store).lambda(l, store)
+		return
+	}
 	l(ba)
 }
 func (ba *backingNode) getKey() nibbles {
