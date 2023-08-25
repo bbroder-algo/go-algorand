@@ -82,7 +82,7 @@ In this way, trie operations 'unroll' paths from the trie store into working
 memory as necessary to complete the operation.  
 
 ```
-Trie on backing store:
+Trie on backing store with a branch node (BR1) as the root node:
                 _____
                | BR1 |
            ____|_____|____
@@ -111,7 +111,7 @@ statetrie Trie of that backing store trie after a few update Add operations,
 with more paths unrolled from the backing store:
 
           ___
-         | R1|
+         |BR1|
          /   \
         /     \
       __O__   __O__
