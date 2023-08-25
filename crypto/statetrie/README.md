@@ -149,6 +149,26 @@ statetrie object to a single in-memory node.
 
 ***Trie node types:***
 
+There are three main trie nodes, leaf ndoes, branch nodes, and extension nodes.
+These are the nodes that are hashed to calculate the hash root, and which are
+serialized to the backing store.  The statetrie object uses two other
+unserialized node objects, parent nodes and backing nodes, which convert into
+one of the three main trie nodes as necessary.
+
+Any of the node types can be the root of a trie.  Only the first three are
+committed to the backing store.
+
+## Trie Node Types
+
+| Node Type      | Description                                                                                           | Value Holding | Stored in Backstore |
+|----------------|-------------------------------------------------------------------------------------------------------|---------------|---------------------|
+| Leaf Nodes     | Contains the remainder of the search key (`keyEnd`) and the hash of the value.                         | Yes           | Yes                 |
+| Branch Nodes   | Holds references to 16 children nodes and an optional "value slot" for keys that terminate at the node. | Optional      | Yes                 |
+| Extension Nodes| Contains a run of commonly shared key nibbles that lead to the next node. No value is held.            | No            | Yes                 |
+| Parent Nodes   | Soft-links back to a node in a parent trie. They expand into copies if edited.                         | Varies        | No                  |
+| Backing Nodes  | Soft links back to a node in the backing store. They are expanded into one of the main nodes if read.  | Varies        | No                  |
+
+
 All trie nodes hold a key representing the nibble position of the node in the
 trie, and a hash of the node itself.  
 
@@ -163,20 +183,6 @@ and commits the node changes with node method `hashingCommit(store)`. In these
 operations, the node hash is set to the SHA-256 hash of the serialization of
 the node.  The hashing scheme requires the lower levels of the trie to be
 hashed before the higher levels.
-
-There are five possible trie nodes. Any of the node types can be the root of a
-trie.  Only the first three are committed to the backing store.
-
-## Trie Node Types
-
-| Node Type      | Description                                                                                           | Value Holding | Stored in Backstore |
-|----------------|-------------------------------------------------------------------------------------------------------|---------------|---------------------|
-| Leaf Nodes     | Contains the remainder of the search key (`keyEnd`) and the hash of the value.                         | Yes           | Yes                 |
-| Branch Nodes   | Holds references to 16 children nodes and an optional "value slot" for keys that terminate at the node. | Optional      | Yes                 |
-| Extension Nodes| Contains a run of commonly shared key nibbles that lead to the next node. No value is held.            | No            | Yes                 |
-| Parent Nodes   | Soft-links back to a node in a parent trie. They expand into copies if edited.                         | Varies        | No                  |
-| Backing Nodes  | Soft links back to a node in the backing store. They are expanded into one of the main nodes if read.  | Varies        | No                  |
-
 
 **Leaf nodes**
 
@@ -267,7 +273,6 @@ which operates on each node.  The nodes would have to be read back in from the
 backing store to resume operations on them.  Eviction of a node only affects
 branch and extension nodes, who replace their children with backing nodes. 
 
-
 ***Raising:***
 
 Some delete operations require a trie transformation that relocates a node
@@ -280,7 +285,6 @@ the node from the store and then immediately raises it.  Similarly, raising a
 parent node copies the parent node by evoking `child` on it and immediately
 raises it.  After a raising operation, there is guaranteed to be a node at the
 new location in the trie.
-
 
 ***Backing stores:***
 
