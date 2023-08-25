@@ -36,6 +36,43 @@ func makeExtensionNode(sharedKey nibbles, next node, key nibbles) *extensionNode
 	return en
 }
 func (en *extensionNode) add(mt *Trie, pathKey nibbles, remainingKey nibbles, valueHash crypto.Digest) (node, error) {
+	//- EN.ADD.1: Point the existing extension node at a (possibly new or existing) node resulting
+	//            from performing the Add operation on the child node.
+	//
+	//- EN.ADD.2: Create an extension node for the current child and store it in a new branch node child slot.
+	//
+	//- EN.ADD.3: Store the existing extension node child in a new branch node child slot.
+	//
+	//- EN.ADD.4: Store the new value in a new leaf node stored in an available child slot of the new branch node.
+	//
+	//- EN.ADD.5: Store the new value in the value slot of the new branch node.
+	//
+	//- EN.ADD.6: Modify the existing extension node shared key and point the child at the new branch node.
+	//
+	//- EN.ADD.7: Replace the extension node with the branch node created earlier.
+	//
+	//Operation sets (1 + 2x2 + 2x2 = 9 sets) :
+	//
+	//  * EN.ADD.1
+	//
+	//  This redirects the extension node to a new/existing node resulting from
+	//  performing the Add operation on the extension child.
+	//
+	//  * EN.ADD.2|EN.ADD.3 then EN.ADD.4|EN.ADD.5 then EN.ADD.6
+	//
+	//  This stores the current extension node child in either a new branch node
+	//  child slot or by creating a new extension node at a new key pointing at the
+	//  child, and attaching that to a new branch node.  Either way, the new branch
+	//  node also receives a new leaf node with the new value or has its value slot
+	//  assigned, and another extension node is created to replace it pointed at the
+	//  branch node as its target.
+	//
+	//  * EN.ADD.2|EN.ADD.3 then EN.ADD.4|EN.ADD.5 then EN.ADD.7
+	//
+	//  Same as above, only the new branch node replaceds the existing extension node
+	//  outright, without the additional extension node.
+	//
+
 	// Calculate the shared nibbles between the key we're adding and this extension node.
 	shNibbles := sharedNibbles(en.sharedKey, remainingKey)
 	if len(shNibbles) == len(en.sharedKey) {
@@ -126,6 +163,13 @@ func (en *extensionNode) raise(mt *Trie, prefix nibbles, key nibbles) node {
 	return en
 }
 func (en *extensionNode) delete(mt *Trie, pathKey nibbles, remainingKey nibbles) (node, bool, error) {
+	//- EN.DEL.1: The extension node can be deleted because the child was deleted
+	//  after finding the key in the lower subtrie.
+	//
+	//- EN.DEL.2: Raise up the results of the successful deletion operation on the
+	//  extension node child to replace the existing node (possibly with another
+	//  extension nodes, as branches are raised up the trie by placing extension
+	//  nodes in front of them)
 	var err error
 	if len(remainingKey) == 0 {
 		// can't stop on an exension node

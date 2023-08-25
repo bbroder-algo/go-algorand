@@ -29,6 +29,10 @@ type leafNode struct {
 	hash      crypto.Digest
 }
 
+//
+//**Leaf nodes**
+//
+
 func makeLeafNode(keyEnd nibbles, valueHash crypto.Digest, key nibbles) *leafNode {
 	stats.makeleaves++
 	ln := &leafNode{keyEnd: make(nibbles, len(keyEnd)), valueHash: valueHash, key: make(nibbles, len(key))}
@@ -63,6 +67,41 @@ func (ln *leafNode) setHash(hash crypto.Digest) {
 	ln.hash = hash
 }
 func (ln *leafNode) add(mt *Trie, pathKey nibbles, remainingKey nibbles, valueHash crypto.Digest) (node, error) {
+	//* Add operation transitions
+	//
+	//- LN.ADD.1: Store the new value in the existing leaf node, overwriting it.
+	//
+	//- LN.ADD.2: Store the existing leaf value in a new branch node value space.
+	//
+	//- LN.ADD.3: Store the existing leaf value in a new leaf node attached to a new branch node.
+	//
+	//- LN.ADD.4: Store the new value in the new branch node value space.
+	//
+	//- LN.ADD.5: Store the new value in a new leaf node attached to the new branch node.
+	//
+	//- LN.ADD.6: Replace the leaf node with a new extention node in front of the new branch node.
+	//
+	//- LN.ADD.7: Replace the leaf node with a second new branch node in front of the new branch node.
+	//
+	//- LN.ADD.8: Replace the leaf node with the branch node created earlier.
+	//
+	//Operation sets (1 + 2x2 + 2x2x2 = 13 sets):
+	//
+	//  * LN.ADD.1
+	//
+	//  This updates the existing node with a new value, deleting the old value.
+	//
+	//  * LN.ADD.2|LN.ADD.3 then LN.ADD.4|LN.ADD.5
+	//
+	//  This accomodates both the old and new values remaining in the trie,
+	//  adding either 2 or 3 nodes (1 branch and 1 or 2 leaves)
+	//
+	//  * LN.ADD.2|LN.ADD.3 then LN.ADD.4|LN.ADD.5 then LN.ADD.6|LN.ADD.7
+	//
+	//  This accomodates both the old and new values remaining in the trie,
+	//  and a shared extension, adding either 3 or 4 nodes (1 branch and 1
+	//  or 2 leaves, plus either a extension or branch node)
+	//
 	if equalNibbles(ln.keyEnd, remainingKey) {
 		// The two keys are the same. Replace the value.
 		if ln.valueHash == valueHash {
@@ -133,24 +172,14 @@ func (ln *leafNode) add(mt *Trie, pathKey nibbles, remainingKey nibbles, valueHa
 		// transition LN.6
 		return en, nil
 	}
-	//	if len(shNibbles) == 1 {
-	//		// If there is only one shared nibble, we just make a second branch node as opposed to an
-	//		// extension node with only one shared nibble, the chances are high that we'd have to just
-	//		// delete that node and replace it with a full branch node soon anyway.
-	//		var children2 [16]node
-	//		children2[shNibbles[0]] = bn2
-	//		bnKey := pathKey[:]
-	//		bn3 := makeBranchNode(children2, crypto.Digest{}, bnKey)
-	//		mt.addNode(bn3)
-	//		// transition LN.7
-	//		return bn3, nil
-	//	}
-	// There are no shared nibbles anymore, so just return the branch node.
-
 	// transition LN.8
 	return bn2, nil
 }
 func (ln *leafNode) delete(mt *Trie, pathKey nibbles, remainingKey nibbles) (node, bool, error) {
+	//- LN.DEL.1: Delete this leaf node that matches the Delete key.  Pointers to
+	//  this node from a branch or extension node are replaced with nil.  The node is
+	//  added to the trie's list of deleted keys for later backstore commit.
+	//
 	if equalNibbles(ln.keyEnd, remainingKey) {
 		// The two keys are the same. Delete the value.
 		// transition LN.DEL.1

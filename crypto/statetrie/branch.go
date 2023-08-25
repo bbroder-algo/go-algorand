@@ -57,6 +57,16 @@ func (bn *branchNode) child() node {
 }
 
 func (bn *branchNode) add(mt *Trie, pathKey nibbles, remainingKey nibbles, valueHash crypto.Digest) (node, error) {
+	//Three operational transitions:
+	//
+	//- BN.ADD.1: Store the new value in the branch node value slot. This overwrites
+	//  the branch node slot value.
+	//
+	//- BN.ADD.2: Make a new leaf node with the new value, and point an available
+	//  branch child slot at it. This stores a new leaf node in a child slot.
+	//
+	//- BN.ADD.3: This repoints the child node to a new/existing node resulting from
+	//  performing the Add operation on the child node.
 	if len(remainingKey) == 0 {
 		// If we're here, then set the value hash in this node, overwriting the old one.
 		if bn.valueHash == valueHash {
@@ -104,6 +114,22 @@ func (bn *branchNode) raise(mt *Trie, prefix nibbles, key nibbles) node {
 	return en
 }
 func (bn *branchNode) delete(mt *Trie, pathKey nibbles, remainingKey nibbles) (node, bool, error) {
+	//- BN.DEL.1: Copy the empty hash into the value slot, mark the node for rehashing.
+	//
+	//- BN.DEL.2: Raise up the only child left to replace the branch node.
+	//
+	//- BN.DEL.3: Delete the childless and valueless branch node.  Add it to the
+	//  trie's list of deleted keys for later backstore commit.
+	//
+	//- BN.DEL.4: Replace the child slot with a new node created by deleting the node
+	//  lower in the trie Mark for rehashing.
+	//
+	//- BN.DEL.5: Replace the branch node with a leaf node valued by the branch node value slot.
+	//
+	//- BN.DEL.6: Replace the branch node with the only child left raised up a nibble.
+	//
+	//- BN.DEL.7: Delete the childless and valueless branch node.  Add it to the
+	//  trie's list of deleted keys for later backstore commit.
 	if len(remainingKey) == 0 {
 		if (bn.valueHash == crypto.Digest{}) {
 			// valueHash is empty -- key not found.
