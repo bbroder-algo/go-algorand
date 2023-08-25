@@ -81,7 +81,49 @@ into one of the three main trie node types (branch, extension, or leaf).
 In this way, trie operations 'unroll' paths from the trie store into working
 memory as necessary to complete the operation.  
 
-Nodes that can be reached from the trie object root node represent:
+```
+Trie on backing store
+                _____
+               |  R1 |
+           ____|_____|____
+          /              \
+         /                \
+      __O__              __O__
+     /     \            /     \
+    O       O          O       O
+   / \     / \        / \     / \  
+  O   O   O   O      O   O   O   O
+ / \ / \ / \ / \    / \ / \ / \ / \
+O   O   O   O   O  O   O   O   O   O
+
+
+statetrie Trie of that backing store trie, immediately after MakeTrie, with
+the two child nodes held as backing nodes with known hashes. The root hash
+of the backing store can be calculated immediately without descending.
+
+          ___
+         | R1|
+         /   \
+        /     \
+       O       O  
+
+statetrie Trie of that backing store trie after a few update Add operations,
+with more paths unrolled from the backing store.
+
+          ___
+         | R1|
+         /   \
+        /     \
+      __O__   __O__
+     /     \       \
+    O       O       O
+   /       / \     / \
+  O       O   o   O   O
+ /       /           / \
+O       O           O   O
+```
+
+Nodes that can be reached from the statetrie root node represent:
 
 1. uncommitted new intermediary or leaf nodes created in support of the Add or Delete and are not yet hashed
 
