@@ -67,3 +67,16 @@ func deserializeNode(nbytes []byte, key nibbles) node {
 		panic(fmt.Sprintf("deserializeNode: invalid node type %d", nbytes[0]))
 	}
 }
+
+func verify(n node, hash crypto.Digest) bool {
+	bytes, err := n.serialize()
+	if err != nil {
+		panic(err)
+	}
+	verify := hash == crypto.Hash(bytes)
+	if !verify {
+		panic(fmt.Sprintf("verify: hash mismatch %s != %s", hash, crypto.Hash(bytes)))
+	}
+	fmt.Printf("verify: hash match %s == %s\n", hash, hash)
+	return verify
+}

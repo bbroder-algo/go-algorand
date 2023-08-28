@@ -29,7 +29,6 @@ type nibbles []byte
 // half indicates if the last byte of the returned array is a full byte or
 // only the high 4 bits are included.
 func unpack(data []byte, half bool) (nibbles, error) {
-	return nibbles(data), nil
 	var ns nibbles
 	if half {
 		ns = make([]byte, len(data)*2-1)
@@ -54,7 +53,6 @@ func unpack(data []byte, half bool) (nibbles, error) {
 	return ns, nil
 }
 func (ns *nibbles) pack() ([]byte, bool, error) {
-	return *ns, false, nil
 	length := len(*ns)
 	data := make([]byte, length/2+length%2)
 	for i := 0; i < len(*ns); i++ {
@@ -97,4 +95,31 @@ func sharedNibbles(arr1 nibbles, arr2 nibbles) nibbles {
 		}
 	}
 	return arr1[:minLength]
+}
+func (ns nibbles) serialize() (data []byte) {
+	var buf bytes.Buffer
+	p, h, _ := ns.pack()
+	buf.Write(p)
+	if h {
+		buf.WriteByte(1)
+	} else {
+		buf.WriteByte(3)
+	}
+
+	return buf.Bytes()
+}
+func deserializeNibbles(data []byte) (nibbles, error) {
+	var ns nibbles
+	var err error
+	if len(data) == 0 {
+		return nil, errors.New("empty data")
+	}
+	if data[len(data)-1] == 1 {
+		ns, err = unpack(data[:len(data)-1], true)
+	} else if data[len(data)-1] == 3 {
+		ns, err = unpack(data[:len(data)-1], false)
+	} else {
+		return nil, errors.New("invalid data")
+	}
+	return ns, err
 }

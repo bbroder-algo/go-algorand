@@ -48,7 +48,7 @@ func MakeTrie(store backing) *Trie {
 	mt.root = mt.store.get(nibbles{})
 	if debugTrie {
 		mt.Hash()
-		fmt.Printf("MakeTrie: %v\n", mt.root.getHash())
+		fmt.Printf("MakeTrie: %v\n", mt.root)
 	}
 	return mt
 }

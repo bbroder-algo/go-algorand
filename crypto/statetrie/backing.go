@@ -26,6 +26,7 @@ type backing interface {
 	get(key nibbles) node
 	set(key nibbles, value []byte) error
 	del(key nibbles) error
+	isTrusted() bool
 	close() error
 }
 
@@ -45,6 +46,12 @@ func (ba *backingNode) setHash(hash crypto.Digest) {
 }
 func (ba *backingNode) get(store backing) node {
 	n := store.get(ba.key)
+	if !store.isTrusted() {
+		if !verify(n, ba.hash) {
+			panic("hash mismatch")
+		}
+	}
+
 	n.setHash(ba.hash)
 	return n
 }
@@ -100,6 +107,10 @@ type memoryBackstore struct {
 	db map[string][]byte
 }
 
+func (mb *memoryBackstore) isTrusted() bool {
+	return true
+}
+
 func makeMemoryBackstore() *memoryBackstore {
 	return &memoryBackstore{db: make(map[string][]byte)}
 }
@@ -143,4 +154,7 @@ func (nb *nullBackstore) batchStart() {}
 func (nb *nullBackstore) batchEnd()   {}
 func (nb *nullBackstore) close() error {
 	return nil
+}
+func (nb *nullBackstore) isTrusted() bool {
+	return true
 }

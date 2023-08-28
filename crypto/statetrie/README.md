@@ -88,11 +88,14 @@ necessary), creating new nodes (if the key added is unique or a key is found
 for deletion), and keeping track of nodes that can be deleted from the
 backstore on the next Commit.
 
-New `statetrie` objects that operate on a (potentially massive) trie residing on 
-a backing store are created by `MakeTrie (store)` and are initialized by loading
-and deserializing the root node from the store.  References pointing down from this node are represented by shallow backing node objects.  
+New `statetrie` objects that operate on a (potentially massive) trie residing
+on a backing store are created by `MakeTrie (store)` and are initialized by
+loading and deserializing the root node from the store.  References pointing
+down from this node are represented by shallow backing node objects.  
 
-When Add or Delete operations want to descend through one of these backing nodes, the bytes are obtained from the backing store and deserialized into one of the three main trie node types (branch, extension, or leaf).
+When Add or Delete operations want to descend through one of these backing
+nodes, the bytes are obtained from the backing store and deserialized into one
+of the three main trie node types (branch, extension, or leaf).
 
 In this way, trie operations 'unroll' paths from the trie store into working
 memory as necessary to complete the operation.  
@@ -143,23 +146,29 @@ O       O           O   O
 
 Nodes that can be reached from the statetrie root node represent:
 
-1. uncommitted new intermediary or leaf nodes created in support of the Add or Delete and are not yet hashed
+1. uncommitted new intermediary or leaf nodes created in support of the Add or
+   Delete and are not yet hashed
 
-2. altered nodes created from prior operations that were never evicted (replaced with backing nodes), with their hash now zeroed as they were modified since the last Commit,
+2. altered nodes created from prior operations that were never evicted
+   (replaced with backing nodes), with their hash now zeroed as they were
+   modified since the last Commit,
 
-3. unaltered nodes created from prior operations in the past that were never evicted (replaced with backing nodes), and still have their original, known hash
+3. unaltered nodes created from prior operations in the past that were never
+   evicted (replaced with backing nodes), and still have their original, known
+   hash
 
 4. references to nodes on the backing store (with a known hash)
 
-5. references to nodes in the parent trie, which act as lazy copies of the parent nodes and disappear on merge
+5. references to nodes in the parent trie, which act as lazy copies of the
+   parent nodes and disappear on merge
 
 On Commit, the first two node categories reachable from the root node
 (following parent links) are hashed and committed to the backstore, and any
 keys marked for deletion are removed from the store.
 
 Unmodified unrolls or committed nodes (categories 3 and 4) can either stay in
-memory or face eviction by their parent node through an eviction function passed
-to a call to Evict. 
+memory or face eviction by their parent node through an eviction function
+passed to a call to Evict. 
 
 Eviction of branching and extension nodes replaces their lower subtrie with a
 backing node. The eviction function in the sample above is called after Commit,
