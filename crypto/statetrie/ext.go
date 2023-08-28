@@ -252,11 +252,11 @@ func deserializeExtensionNode(data []byte, key nibbles) *extensionNode {
 		panic("invalid prefix for extension node")
 	}
 
-	if len(data) < 33 {
+	if len(data) < (1 + crypto.DigestSize) {
 		panic("data too short to be an extension node")
 	}
 
-	sharedKey, err := unpack(data[33:], data[0] == 1)
+	sharedKey, err := unpack(data[(1+crypto.DigestSize):], data[0] == 1)
 	if err != nil {
 		panic(err)
 	}
@@ -264,7 +264,7 @@ func deserializeExtensionNode(data []byte, key nibbles) *extensionNode {
 		panic("sharedKey can't be empty in an extension node")
 	}
 	var hash crypto.Digest
-	copy(hash[:], data[1:33])
+	copy(hash[:], data[1:(1+crypto.DigestSize)])
 	var child node
 	if !hash.IsZero() {
 		chKey := key[:]
@@ -281,16 +281,15 @@ func (en *extensionNode) serialize() ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	data := make([]byte, 33+len(pack))
+	data := make([]byte, 1+crypto.DigestSize+len(pack))
 	if half {
 		data[0] = 1
 	} else {
 		data[0] = 2
 	}
 
-	copy(data[1:33], en.next.getHash()[:])
-	//    copy(data[1:33], en.next.getHash().ToSlice())
-	copy(data[33:], pack)
+	copy(data[1:(1+crypto.DigestSize)], en.next.getHash()[:])
+	copy(data[(1+crypto.DigestSize):], pack)
 	return data, nil
 }
 func (en *extensionNode) lambda(l func(node), store backing) {
@@ -305,7 +304,6 @@ func (en *extensionNode) preload(store backing, length int) node {
 func (en *extensionNode) evict(eviction func(node) bool) {
 	if eviction(en) {
 		fmt.Printf("evicting ext node %x\n", en.getKey())
-		//		en.next = makeBackingNode(en.next.getHash(), en.next.getKey())
 		en.next = makeBackingNode(*en.next.getHash(), en.next.getKey())
 		stats.evictions++
 	} else {
@@ -316,8 +314,6 @@ func (en *extensionNode) getKey() nibbles {
 	return en.key
 }
 
-//	func (en *extensionNode) getHash() crypto.Digest {
-//		return en.hash
 func (en *extensionNode) getHash() *crypto.Digest {
 	return &en.hash
 }

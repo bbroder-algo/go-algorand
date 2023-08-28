@@ -263,16 +263,16 @@ func deserializeLeafNode(data []byte, key nibbles) *leafNode {
 	if data[0] != 3 && data[0] != 4 {
 		panic("invalid leaf node")
 	}
-	if len(data) < 33 {
+	if len(data) < 1+crypto.DigestSize {
 		panic("data too short to be a leaf node")
 	}
 
-	keyEnd, err := unpack(data[33:], data[0] == 3)
+	keyEnd, err := unpack(data[(1+crypto.DigestSize):], data[0] == 3)
 	if err != nil {
 		panic(err)
 	}
 	lnKey := key[:]
-	return makeLeafNode(keyEnd, crypto.Digest(data[1:33]), lnKey)
+	return makeLeafNode(keyEnd, crypto.Digest(data[1:(1+crypto.DigestSize)]), lnKey)
 }
 
 var lnbuffer bytes.Buffer

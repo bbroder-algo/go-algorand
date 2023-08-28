@@ -250,7 +250,7 @@ func deserializeBranchNode(data []byte, key nibbles) *branchNode {
 	if data[0] != 5 {
 		panic("invalid prefix for branch node")
 	}
-	if len(data) < 545 {
+	if len(data) < (1 + 17*crypto.DigestSize) {
 		panic("data too short to be a branch node")
 	}
 
@@ -258,7 +258,7 @@ func deserializeBranchNode(data []byte, key nibbles) *branchNode {
 	for i := 0; i < 16; i++ {
 		var hash crypto.Digest
 
-		copy(hash[:], data[1+i*32:33+i*32])
+		copy(hash[:], data[1+i*crypto.DigestSize:(1+crypto.DigestSize)+i*crypto.DigestSize])
 		if !hash.IsZero() {
 			chKey := key[:]
 			chKey = append(chKey, byte(i))
@@ -266,7 +266,7 @@ func deserializeBranchNode(data []byte, key nibbles) *branchNode {
 		}
 	}
 	var valueHash crypto.Digest
-	copy(valueHash[:], data[513:545])
+	copy(valueHash[:], data[(1+16*crypto.DigestSize):(1+17*crypto.DigestSize)])
 	return makeBranchNode(children, valueHash, key)
 }
 
