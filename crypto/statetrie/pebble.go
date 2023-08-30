@@ -65,16 +65,16 @@ func makeUntrustedBackstore(store backing) *untrustedBackstore {
 func (pub *untrustedBackstore) isTrusted() bool {
 	return false
 }
-func (pub *untrustedBackstore) get(key nibbles) node {
+func (pub *untrustedBackstore) get(key Nibbles) node {
 	return pub.store.get(key)
 }
 func (pub *untrustedBackstore) close() error {
 	return pub.store.close()
 }
-func (pub *untrustedBackstore) set(key nibbles, value []byte) error {
+func (pub *untrustedBackstore) set(key Nibbles, value []byte) error {
 	return pub.store.set(key, value)
 }
-func (pub *untrustedBackstore) del(key nibbles) error {
+func (pub *untrustedBackstore) del(key Nibbles) error {
 	return pub.store.del(key)
 }
 func (pub *untrustedBackstore) batchStart() {
@@ -86,7 +86,7 @@ func (pub *untrustedBackstore) batchEnd() {
 func (pb *pebbleBackstore) isTrusted() bool {
 	return true
 }
-func (pb *pebbleBackstore) get(key nibbles) node {
+func (pb *pebbleBackstore) get(key Nibbles) node {
 	stats.dbgets++
 
 	dbbytes, closer, err := pb.db.Get(key.serialize())
@@ -105,10 +105,10 @@ func (pb *pebbleBackstore) get(key nibbles) node {
 func (pb *pebbleBackstore) close() error {
 	return pb.db.Close()
 }
-func (pb *pebbleBackstore) set(key nibbles, value []byte) error {
+func (pb *pebbleBackstore) set(key Nibbles, value []byte) error {
 	return pb.db.Set(key.serialize(), value, pebble.NoSync)
 }
-func (pb *pebbleBackstore) del(key nibbles) error {
+func (pb *pebbleBackstore) del(key Nibbles) error {
 	return pb.db.Delete(key.serialize(), pebble.NoSync)
 }
 func (pb *pebbleBackstore) batchStart() {

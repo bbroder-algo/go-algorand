@@ -26,12 +26,12 @@ import (
 
 type node interface {
 	child() node
-	getKey() nibbles         // the key of the node in the trie
+	getKey() Nibbles         // the key of the node in the trie
 	getHash() *crypto.Digest // the hash of the node, if it has been hashed
 	//	getHash() crypto.Digest // the hash of the node, if it has been hashed
-	add(mt *Trie, pathKey nibbles, remainingKey nibbles, valueHash crypto.Digest) (node, error)
-	delete(mt *Trie, pathKey nibbles, remainingKey nibbles) (node, bool, error)
-	raise(mt *Trie, prefix nibbles, key nibbles) node
+	add(mt *Trie, pathKey Nibbles, remainingKey Nibbles, valueHash crypto.Digest) (node, error)
+	delete(mt *Trie, pathKey Nibbles, remainingKey Nibbles) (node, bool, error)
+	raise(mt *Trie, prefix Nibbles, key Nibbles) node
 	hashing() error
 	hashingCommit(store backing, e Eviction) error
 	merge(mt *Trie)
@@ -50,7 +50,7 @@ type node interface {
 //  5 == branch
 //
 
-func deserializeNode(nbytes []byte, key nibbles) node {
+func deserializeNode(nbytes []byte, key Nibbles) node {
 	if len(nbytes) == 0 {
 		debug.PrintStack()
 		panic("deserializeNode: zero length node")

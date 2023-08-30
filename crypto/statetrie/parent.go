@@ -30,13 +30,13 @@ func makeParent(p node) *parent {
 	return pa
 }
 
-func (pa *parent) add(mt *Trie, pathKey nibbles, remainingKey nibbles, valueHash crypto.Digest) (node, error) {
+func (pa *parent) add(mt *Trie, pathKey Nibbles, remainingKey Nibbles, valueHash crypto.Digest) (node, error) {
 	return pa.p.child().add(mt, pathKey, remainingKey, valueHash)
 }
-func (pa *parent) delete(mt *Trie, pathKey nibbles, remainingKey nibbles) (node, bool, error) {
+func (pa *parent) delete(mt *Trie, pathKey Nibbles, remainingKey Nibbles) (node, bool, error) {
 	return pa.p.child().delete(mt, pathKey, remainingKey)
 }
-func (pa *parent) raise(mt *Trie, prefix nibbles, key nibbles) node {
+func (pa *parent) raise(mt *Trie, prefix Nibbles, key Nibbles) node {
 	return pa.p.child().raise(mt, prefix, key)
 }
 func (pa *parent) setHash(hash crypto.Digest) {
@@ -58,7 +58,7 @@ func (pa *parent) lambda(l func(node), store backing) {
 	}
 	l(pa)
 }
-func (pa *parent) getKey() nibbles {
+func (pa *parent) getKey() Nibbles {
 	return pa.p.getKey()
 }
 

@@ -45,7 +45,7 @@ func MakeTrie(store backing) *Trie {
 	if store == nil {
 		mt.store = makeMemoryBackstore()
 	}
-	mt.root = mt.store.get(nibbles{})
+	mt.root = mt.store.get(Nibbles{})
 	if debugTrie {
 		mt.Hash()
 		fmt.Printf("MakeTrie: %v\n", mt.root)
@@ -54,7 +54,7 @@ func MakeTrie(store backing) *Trie {
 }
 
 // Add adds the given key/value pair to the trie.
-func (mt *Trie) Add(key nibbles, value []byte) (err error) {
+func (mt *Trie) Add(key Nibbles, value []byte) (err error) {
 	if len(key) == 0 {
 		return errors.New("empty key not allowed")
 	}
@@ -69,13 +69,13 @@ func (mt *Trie) Add(key nibbles, value []byte) (err error) {
 	if mt.root == nil {
 		stats.cryptohashes++
 		stats.newrootnode++
-		mt.root = makeLeafNode(key, crypto.Hash(value), nibbles{})
+		mt.root = makeLeafNode(key, crypto.Hash(value), Nibbles{})
 		mt.addNode(mt.root)
 		return nil
 	}
 
 	stats.cryptohashes++
-	replacement, err := mt.root.add(mt, nibbles{}, key, crypto.Hash(value))
+	replacement, err := mt.root.add(mt, Nibbles{}, key, crypto.Hash(value))
 	if err != nil {
 		return err
 	}
@@ -88,7 +88,7 @@ func (mt *Trie) Add(key nibbles, value []byte) (err error) {
 
 // Delete deletes the given key from the trie, if such element exists.
 // if no such element exists, return false
-func (mt *Trie) Delete(key nibbles) (bool, error) {
+func (mt *Trie) Delete(key Nibbles) (bool, error) {
 	var err error
 	if len(key) == 0 {
 		return false, errors.New("empty key not allowed")
@@ -100,7 +100,7 @@ func (mt *Trie) Delete(key nibbles) (bool, error) {
 		return false, nil
 	}
 
-	replacement, found, err := mt.root.delete(mt, nibbles{}, key)
+	replacement, found, err := mt.root.delete(mt, Nibbles{}, key)
 	if err == nil && found {
 		mt.root = replacement
 	}

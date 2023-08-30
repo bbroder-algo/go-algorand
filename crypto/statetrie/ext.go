@@ -22,20 +22,20 @@ import (
 )
 
 type extensionNode struct {
-	sharedKey nibbles
+	sharedKey Nibbles
 	next      node
-	key       nibbles
+	key       Nibbles
 	hash      crypto.Digest
 }
 
-func makeExtensionNode(sharedKey nibbles, next node, key nibbles) *extensionNode {
+func makeExtensionNode(sharedKey Nibbles, next node, key Nibbles) *extensionNode {
 	stats.makeextensions++
-	en := &extensionNode{sharedKey: make(nibbles, len(sharedKey)), next: next, key: make(nibbles, len(key))}
+	en := &extensionNode{sharedKey: make(Nibbles, len(sharedKey)), next: next, key: make(Nibbles, len(key))}
 	copy(en.key, key)
 	copy(en.sharedKey, sharedKey)
 	return en
 }
-func (en *extensionNode) add(mt *Trie, pathKey nibbles, remainingKey nibbles, valueHash crypto.Digest) (node, error) {
+func (en *extensionNode) add(mt *Trie, pathKey Nibbles, remainingKey Nibbles, valueHash crypto.Digest) (node, error) {
 	//- EN.ADD.1: Point the existing extension node at a (possibly new or existing) node resulting
 	//            from performing the Add operation on the child node.
 	//
@@ -73,7 +73,8 @@ func (en *extensionNode) add(mt *Trie, pathKey nibbles, remainingKey nibbles, va
 	//  outright, without the additional extension node.
 	//
 
-	// Calculate the shared nibbles between the key we're adding and this extension node.
+	// Calculate the shared Nibbles between the key we're adding and this extension node.
+	// shNibbles is a slice from en.sharedKey and is read-only
 	shNibbles := sharedNibbles(en.sharedKey, remainingKey)
 	if len(shNibbles) == len(en.sharedKey) {
 		// The entire extension node is shared.  descend.
@@ -97,7 +98,7 @@ func (en *extensionNode) add(mt *Trie, pathKey nibbles, remainingKey nibbles, va
 	// attached to the new branch node.
 	shifted := shiftNibbles(en.sharedKey, len(shNibbles))
 	if len(shifted) >= 2 {
-		// if there's two or more nibbles left, make another extension node.
+		// if there's two or more Nibbles left, make another extension node.
 		shifted2 := shiftNibbles(shifted, 1)
 		enKey := pathKey[:]
 		enKey = append(enKey, shNibbles...)
@@ -108,7 +109,7 @@ func (en *extensionNode) add(mt *Trie, pathKey nibbles, remainingKey nibbles, va
 		children[shifted[0]] = en2
 	} else {
 		// if there's only one nibble left, store the child in the branch node.
-		// there can't be no nibbles left, or the earlier entire-node-shared case would have been triggered.
+		// there can't be no Nibbles left, or the earlier entire-node-shared case would have been triggered.
 		// transition EN.ADD.3
 		children[shifted[0]] = en.next
 	}
@@ -151,18 +152,18 @@ func (en *extensionNode) add(mt *Trie, pathKey nibbles, remainingKey nibbles, va
 	// transition EN.ADD.7
 	return replacement, nil
 }
-func (en *extensionNode) raise(mt *Trie, prefix nibbles, key nibbles) node {
+func (en *extensionNode) raise(mt *Trie, prefix Nibbles, key Nibbles) node {
 	mt.delNode(en)
-	en.sharedKey = make(nibbles, len(prefix)+len(en.sharedKey))
+	en.sharedKey = make(Nibbles, len(prefix)+len(en.sharedKey))
 	copy(en.sharedKey, prefix)
 	copy(en.sharedKey[len(prefix):], en.sharedKey)
-	en.key = make(nibbles, len(key))
+	en.key = make(Nibbles, len(key))
 	copy(en.key, key)
 	mt.addNode(en)
 	en.hash = crypto.Digest{}
 	return en
 }
-func (en *extensionNode) delete(mt *Trie, pathKey nibbles, remainingKey nibbles) (node, bool, error) {
+func (en *extensionNode) delete(mt *Trie, pathKey Nibbles, remainingKey Nibbles) (node, bool, error) {
 	//- EN.DEL.1: The extension node can be deleted because the child was deleted
 	//  after finding the key in the lower subtrie.
 	//
@@ -175,6 +176,7 @@ func (en *extensionNode) delete(mt *Trie, pathKey nibbles, remainingKey nibbles)
 		// can't stop on an exension node
 		return nil, false, fmt.Errorf("key too short")
 	}
+	// shNibbles is a slice from remainingKey and is read-only
 	shNibbles := sharedNibbles(remainingKey, en.sharedKey)
 	if len(shNibbles) != len(en.sharedKey) {
 		return en, false, nil
@@ -254,7 +256,7 @@ func (en *extensionNode) evict(e Eviction) {
 func (en *extensionNode) hashing() error {
 	return en.hashingCommit(nil, nil)
 }
-func deserializeExtensionNode(data []byte, key nibbles) *extensionNode {
+func deserializeExtensionNode(data []byte, key Nibbles) *extensionNode {
 	if data[0] != 1 && data[0] != 2 {
 		panic("invalid prefix for extension node")
 	}
@@ -263,10 +265,7 @@ func deserializeExtensionNode(data []byte, key nibbles) *extensionNode {
 		panic("data too short to be an extension node")
 	}
 
-	sharedKey, err := unpack(data[(1+crypto.DigestSize):], data[0] == 1)
-	if err != nil {
-		panic(err)
-	}
+	sharedKey := unpack(data[(1+crypto.DigestSize):], data[0] == 1)
 	if len(sharedKey) == 0 {
 		panic("sharedKey can't be empty in an extension node")
 	}
@@ -284,10 +283,7 @@ func deserializeExtensionNode(data []byte, key nibbles) *extensionNode {
 	return makeExtensionNode(sharedKey, child, key)
 }
 func (en *extensionNode) serialize() ([]byte, error) {
-	pack, half, err := en.sharedKey.pack()
-	if err != nil {
-		return nil, err
-	}
+	pack, half := en.sharedKey.pack()
 	data := make([]byte, 1+crypto.DigestSize+len(pack))
 	if half {
 		data[0] = 1
@@ -308,7 +304,7 @@ func (en *extensionNode) preload(store backing, length int) node {
 	return en
 }
 
-func (en *extensionNode) getKey() nibbles {
+func (en *extensionNode) getKey() Nibbles {
 	return en.key
 }
 

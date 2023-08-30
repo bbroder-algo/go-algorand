@@ -24,27 +24,27 @@ import (
 type backing interface {
 	batchStart()
 	batchEnd()
-	get(key nibbles) node
-	set(key nibbles, value []byte) error
-	del(key nibbles) error
+	get(key Nibbles) node
+	set(key Nibbles, value []byte) error
+	del(key Nibbles) error
 	isTrusted() bool
 	close() error
 }
 
 type backingNode struct {
-	key  nibbles
+	key  Nibbles
 	hash crypto.Digest
 }
 
 var backingNodePool = sync.Pool{
 	New: func() interface{} {
 		return &backingNode{
-			key: make(nibbles, 0),
+			key: make(Nibbles, 0),
 		}
 	},
 }
 
-func makeBackingNode(hash crypto.Digest, key nibbles) *backingNode {
+func makeBackingNode(hash crypto.Digest, key Nibbles) *backingNode {
 	stats.makebanodes++
 	ba := backingNodePool.Get().(*backingNode)
 	ba.hash = hash
@@ -65,7 +65,7 @@ func (ba *backingNode) get(store backing) node {
 	n.setHash(ba.hash)
 	return n
 }
-func (ba *backingNode) add(mt *Trie, pathKey nibbles, remainingKey nibbles, valueHash crypto.Digest) (node, error) {
+func (ba *backingNode) add(mt *Trie, pathKey Nibbles, remainingKey Nibbles, valueHash crypto.Digest) (node, error) {
 	n, err := ba.get(mt.store).add(mt, pathKey, remainingKey, valueHash)
 	if err != nil {
 		return nil, err
@@ -73,7 +73,7 @@ func (ba *backingNode) add(mt *Trie, pathKey nibbles, remainingKey nibbles, valu
 	backingNodePool.Put(ba)
 	return n, nil
 }
-func (ba *backingNode) delete(mt *Trie, pathKey nibbles, remainingKey nibbles) (node, bool, error) {
+func (ba *backingNode) delete(mt *Trie, pathKey Nibbles, remainingKey Nibbles) (node, bool, error) {
 	n, found, err := ba.get(mt.store).delete(mt, pathKey, remainingKey)
 	if err != nil {
 		return nil, false, err
@@ -84,7 +84,7 @@ func (ba *backingNode) delete(mt *Trie, pathKey nibbles, remainingKey nibbles) (
 
 	return n, found, nil
 }
-func (ba *backingNode) raise(mt *Trie, prefix nibbles, key nibbles) node {
+func (ba *backingNode) raise(mt *Trie, prefix Nibbles, key Nibbles) node {
 	n := ba.get(mt.store).raise(mt, prefix, key)
 	backingNodePool.Put(ba)
 	return n
@@ -110,7 +110,7 @@ func (ba *backingNode) lambda(l func(node), store backing) {
 	}
 	l(ba)
 }
-func (ba *backingNode) getKey() nibbles {
+func (ba *backingNode) getKey() Nibbles {
 	return ba.key
 }
 
@@ -140,17 +140,17 @@ func (mb *memoryBackstore) isTrusted() bool {
 func makeMemoryBackstore() *memoryBackstore {
 	return &memoryBackstore{db: make(map[string][]byte)}
 }
-func (mb *memoryBackstore) get(key nibbles) node {
+func (mb *memoryBackstore) get(key Nibbles) node {
 	if v, ok := mb.db[string(key)]; ok {
 		return deserializeNode(v, key)
 	}
 	return nil
 }
-func (mb *memoryBackstore) set(key nibbles, value []byte) error {
+func (mb *memoryBackstore) set(key Nibbles, value []byte) error {
 	mb.db[string(key)] = value
 	return nil
 }
-func (mb *memoryBackstore) del(key nibbles) error {
+func (mb *memoryBackstore) del(key Nibbles) error {
 	delete(mb.db, string(key))
 	return nil
 }
@@ -167,13 +167,13 @@ type nullBackstore struct {
 func makeNullBackstore() *nullBackstore {
 	return &nullBackstore{}
 }
-func (nb *nullBackstore) get(key nibbles) node {
+func (nb *nullBackstore) get(key Nibbles) node {
 	return nil
 }
-func (nb *nullBackstore) set(key nibbles, value []byte) error {
+func (nb *nullBackstore) set(key Nibbles, value []byte) error {
 	return nil
 }
-func (nb *nullBackstore) del(key nibbles) error {
+func (nb *nullBackstore) del(key Nibbles) error {
 	return nil
 }
 func (nb *nullBackstore) batchStart() {}
