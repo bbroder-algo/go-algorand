@@ -233,7 +233,7 @@ func (ln *leafNode) delete(mt *Trie, pathKey nibbles, remainingKey nibbles) (nod
 	return ln, false, nil
 }
 
-func (ln *leafNode) hashingCommit(store backing) error {
+func (ln *leafNode) hashingCommit(store backing, e Eviction) error {
 	if ln.hash.IsZero() {
 		bytes, err := ln.serialize()
 		if debugTrie {
@@ -257,7 +257,7 @@ func (ln *leafNode) hashingCommit(store backing) error {
 	return nil
 }
 func (ln *leafNode) hashing() error {
-	return ln.hashingCommit(nil)
+	return ln.hashingCommit(nil, nil)
 }
 func deserializeLeafNode(data []byte, key nibbles) *leafNode {
 	if data[0] != 3 && data[0] != 4 {
@@ -293,7 +293,6 @@ func (ln *leafNode) serialize() ([]byte, error) {
 	lnbuffer.Write(pack)
 	return lnbuffer.Bytes(), nil
 }
-func (ln *leafNode) evict(eviction func(node) bool) {}
 func (ln *leafNode) getKey() nibbles {
 	return ln.key
 }

@@ -80,7 +80,7 @@ func (en *extensionNode) add(mt *Trie, pathKey nibbles, remainingKey nibbles, va
 		shifted := shiftNibbles(remainingKey, len(shNibbles))
 		replacement, err := en.next.add(mt, append(pathKey, shNibbles...), shifted, valueHash)
 		if err != nil {
-			return nil, err
+			panic(fmt.Sprintf("extensionNode.add: %v", err))
 		}
 		if replacement.getHash().IsZero() {
 			en.hash = crypto.Digest{}
@@ -214,10 +214,10 @@ func (en *extensionNode) setHash(hash crypto.Digest) {
 	en.hash = hash
 }
 
-func (en *extensionNode) hashingCommit(store backing) error {
+func (en *extensionNode) hashingCommit(store backing, e Eviction) error {
 	if en.hash.IsZero() {
 		if en.next.getHash().IsZero() {
-			err := en.next.hashingCommit(store)
+			err := en.next.hashingCommit(store, e)
 			if err != nil {
 				return err
 			}
@@ -239,13 +239,20 @@ func (en *extensionNode) hashingCommit(store backing) error {
 			if err != nil {
 				return err
 			}
+			en.evict(e)
 		}
 	}
 	return nil
 }
+func (en *extensionNode) evict(e Eviction) {
+	if e != nil && e(en) && en.next.(*backingNode) == nil {
+		en.next = makeBackingNode(*en.next.getHash(), en.next.getKey())
+		stats.evictions++
+	}
+}
 
 func (en *extensionNode) hashing() error {
-	return en.hashingCommit(nil)
+	return en.hashingCommit(nil, nil)
 }
 func deserializeExtensionNode(data []byte, key nibbles) *extensionNode {
 	if data[0] != 1 && data[0] != 2 {
@@ -301,15 +308,6 @@ func (en *extensionNode) preload(store backing, length int) node {
 	return en
 }
 
-func (en *extensionNode) evict(eviction func(node) bool) {
-	if eviction(en) {
-		fmt.Printf("evicting ext node %x\n", en.getKey())
-		en.next = makeBackingNode(*en.next.getHash(), en.next.getKey())
-		stats.evictions++
-	} else {
-		en.next.evict(eviction)
-	}
-}
 func (en *extensionNode) getKey() nibbles {
 	return en.key
 }

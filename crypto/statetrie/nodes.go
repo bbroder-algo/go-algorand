@@ -33,11 +33,10 @@ type node interface {
 	delete(mt *Trie, pathKey nibbles, remainingKey nibbles) (node, bool, error)
 	raise(mt *Trie, prefix nibbles, key nibbles) node
 	hashing() error
-	hashingCommit(store backing) error
+	hashingCommit(store backing, e Eviction) error
 	merge(mt *Trie)
 	serialize() ([]byte, error)
 	preload(store backing, length int) node
-	evict(func(node) bool)
 	lambda(func(node), backing)
 	setHash(hash crypto.Digest)
 }

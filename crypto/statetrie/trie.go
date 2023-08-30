@@ -148,10 +148,10 @@ func (mt *Trie) Merge() {
 }
 
 // Commit commits the trie to the backing store
-func (mt *Trie) Commit() error {
+func (mt *Trie) Commit(e Eviction) error {
 	mt.store.batchStart()
 	if mt.root != nil {
-		err := mt.root.hashingCommit(mt.store)
+		err := mt.root.hashingCommit(mt.store, e)
 		if err != nil {
 			return err
 		}

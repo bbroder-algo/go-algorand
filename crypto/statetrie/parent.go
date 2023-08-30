@@ -42,13 +42,12 @@ func (pa *parent) raise(mt *Trie, prefix nibbles, key nibbles) node {
 func (pa *parent) setHash(hash crypto.Digest) {
 	pa.p.setHash(hash)
 }
-func (pa *parent) hashingCommit(store backing) error {
-	return pa.p.hashingCommit(store)
+func (pa *parent) hashingCommit(store backing, e Eviction) error {
+	return pa.p.hashingCommit(store, e)
 }
 func (pa *parent) hashing() error {
 	return pa.p.hashing()
 }
-func (pa *parent) evict(eviction func(node) bool) {}
 func (pa *parent) preload(store backing, length int) node {
 	return pa.p.preload(store, length)
 }
@@ -63,7 +62,6 @@ func (pa *parent) getKey() nibbles {
 	return pa.p.getKey()
 }
 
-// func (pa *parent) getHash() crypto.Digest {
 func (pa *parent) getHash() *crypto.Digest {
 	return pa.p.getHash()
 }

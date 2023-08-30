@@ -211,11 +211,11 @@ func (bn *branchNode) delete(mt *Trie, pathKey nibbles, remainingKey nibbles) (n
 	// returning either false or an error (or both).
 	return nil, found, err
 }
-func (bn *branchNode) hashingCommit(store backing) error {
+func (bn *branchNode) hashingCommit(store backing, e Eviction) error {
 	if bn.hash.IsZero() {
 		for i := 0; i < 16; i++ {
 			if bn.children[i] != nil && bn.children[i].getHash().IsZero() {
-				err := bn.children[i].hashingCommit(store)
+				err := bn.children[i].hashingCommit(store, e)
 				if err != nil {
 					return err
 				}
@@ -237,13 +237,14 @@ func (bn *branchNode) hashingCommit(store backing) error {
 			if err != nil {
 				return err
 			}
+			bn.evict(e)
 		}
 	}
 	return nil
 }
 
 func (bn *branchNode) hashing() error {
-	return bn.hashingCommit(nil)
+	return bn.hashingCommit(nil, nil)
 }
 
 func deserializeBranchNode(data []byte, key nibbles) *branchNode {
@@ -293,12 +294,9 @@ func (bn *branchNode) serialize() ([]byte, error) {
 	return bnbuffer.Bytes(), nil
 }
 
-// evict walks through the node tree and replaces nodes (and their subtrees) with backing nodes
-// if they meet a user-defined eviction criterion
-// The eviction function is provided as an argument and operates on each node to decide whether it should be evicted.
-func (bn *branchNode) evict(eviction func(node) bool) {
+func (bn *branchNode) evict(e Eviction) {
 	// If the current branch node meets the eviction criterion
-	if eviction(bn) {
+	if e != nil && e(bn) {
 		if debugTrie {
 			fmt.Printf("evicting branch node %x, (%v)\n", bn.getKey(), bn)
 		}
@@ -309,16 +307,11 @@ func (bn *branchNode) evict(eviction func(node) bool) {
 			// Backing nodes need hashes for the hashing function to continue
 			// to work properly
 			if ch != nil && !ch.getHash().IsZero() {
-				bn.children[i] = makeBackingNode(*ch.getHash(), ch.getKey())
-				stats.evictions++
-			}
-		}
-	} else {
-		// If the current branch node doesn't meet the eviction criterion,
-		// recursively attempt to evict its children
-		for i := 0; i < 16; i++ {
-			if bn.children[i] != nil {
-				bn.children[i].evict(eviction)
+				// Don't replace a backing node.
+				if bn.children[i].(*backingNode) == nil {
+					bn.children[i] = makeBackingNode(*ch.getHash(), ch.getKey())
+					stats.evictions++
+				}
 			}
 		}
 	}

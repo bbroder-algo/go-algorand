@@ -18,6 +18,7 @@ package statetrie
 
 import (
 	"github.com/algorand/go-algorand/crypto"
+	"sync"
 )
 
 type backing interface {
@@ -35,10 +36,19 @@ type backingNode struct {
 	hash crypto.Digest
 }
 
+var backingNodePool = sync.Pool{
+	New: func() interface{} {
+		return &backingNode{
+			key: make(nibbles, 0),
+		}
+	},
+}
+
 func makeBackingNode(hash crypto.Digest, key nibbles) *backingNode {
 	stats.makebanodes++
-	ba := &backingNode{hash: hash, key: make(nibbles, len(key))}
-	copy(ba.key, key)
+	ba := backingNodePool.Get().(*backingNode)
+	ba.hash = hash
+	ba.key = append(ba.key[:0], key...)
 	return ba
 }
 func (ba *backingNode) setHash(hash crypto.Digest) {
@@ -56,24 +66,40 @@ func (ba *backingNode) get(store backing) node {
 	return n
 }
 func (ba *backingNode) add(mt *Trie, pathKey nibbles, remainingKey nibbles, valueHash crypto.Digest) (node, error) {
-	return ba.get(mt.store).add(mt, pathKey, remainingKey, valueHash)
+	n, err := ba.get(mt.store).add(mt, pathKey, remainingKey, valueHash)
+	if err != nil {
+		return nil, err
+	}
+	backingNodePool.Put(ba)
+	return n, nil
 }
 func (ba *backingNode) delete(mt *Trie, pathKey nibbles, remainingKey nibbles) (node, bool, error) {
-	return ba.get(mt.store).delete(mt, pathKey, remainingKey)
+	n, found, err := ba.get(mt.store).delete(mt, pathKey, remainingKey)
+	if err != nil {
+		return nil, false, err
+	}
+	if found {
+		backingNodePool.Put(ba)
+	}
+
+	return n, found, nil
 }
 func (ba *backingNode) raise(mt *Trie, prefix nibbles, key nibbles) node {
-	return ba.get(mt.store).raise(mt, prefix, key)
+	n := ba.get(mt.store).raise(mt, prefix, key)
+	backingNodePool.Put(ba)
+	return n
 }
-func (ba *backingNode) hashingCommit(store backing) error {
+func (ba *backingNode) hashingCommit(store backing, e Eviction) error {
 	return nil
 }
 func (ba *backingNode) hashing() error {
 	return nil
 }
-func (ba *backingNode) evict(eviction func(node) bool) {}
 func (ba *backingNode) preload(store backing, length int) node {
 	if len(ba.key) <= length {
-		return ba.get(store).preload(store, length)
+		n := ba.get(store).preload(store, length)
+		backingNodePool.Put(ba)
+		return n
 	}
 	return ba
 }
@@ -97,7 +123,7 @@ func (ba *backingNode) merge(mt *Trie) {
 	panic("backingNode cannot be merged")
 }
 func (ba *backingNode) child() node {
-	panic("backingNode cannot have children ")
+	return makeBackingNode(ba.hash, ba.key)
 }
 func (ba *backingNode) serialize() ([]byte, error) {
 	panic("backingNode cannot be serialized")

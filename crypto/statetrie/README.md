@@ -75,7 +75,7 @@ fmt.Println("K1:V1,K2:V2 Hash:", mt.Hash())
 mt.Delete(key2)
 fmt.Println("K1:V1 Hash:", mt.Hash())
 
-mt.Commit()
+mt.Commit(nil)
 mt.Evict(func(node) bool { 
   return true
 })
@@ -168,17 +168,16 @@ keys marked for deletion are removed from the store.
 
 Unmodified unrolls or committed nodes (categories 3 and 4) can either stay in
 memory or face eviction by their parent node through an eviction function
-passed to a call to Evict. 
+evaluated as the nodes are committed (by calling a node's evict method).
 
-Eviction of branching and extension nodes replaces their lower subtrie with a
-backing node. The eviction function in the sample above is called after Commit,
-guaranteeing all nodes are either unmodified or committed, and evicts all of
-them, thus reducing the representation of the backing store trie in the
-statetrie object to a single in-memory node.
+Eviction of branching and extension nodes replaces their lower subtries with
+backing nodes. A nil eviction function, as above, keeps all nodes in memory.
+A lambda that always returns true would collapse the trie to only the root
+node, with any subtries replaced by backing nodes.
 
 ```
-The statetrie above after Eviction with a lambda returning true if the node key
-is >= 3.
+The statetrie above after committing with an eviction lambda returning true if 
+the node key length is three.
           ___
          |BR1|
          /   \
@@ -291,7 +290,7 @@ converts the parent node into a copy of the original parent node (with the
 `child` node method), and from there the operations continue with the copy
 holding any alterations.
 
-When merging child tries back into their parents, The in-memory node objects in
+When merging child tries back into their parents, the in-memory node objects in
 a child trie undergoes a traversal when merging back into the parent. This
 search aims to identify parent nodes, which are then replaced by their original
 references, effectively stitching the child trie's modifications into the
@@ -303,11 +302,14 @@ a future parent backstore commit.
 ### `statetrie` cache operations
 *  Eviction
 
-Nodes can be evicted from memory after Commit and all their subtree replaced by
-a single backing node according to the binary output of a user-defined function
-which operates on each node.  The nodes would have to be read back in from the
-backing store to resume operations on them.  Eviction of a node only affects
-branch and extension nodes, who replace their children with backing nodes. 
+Nodes can be evicted from memory during Commit and all their subtree replaced by
+a single backing node according to eviction policy, which is the binary output of 
+function which operates on each node.  There are three eviction strategies, EvictAll,
+EvictNone, and EvictLevel(n), which evicts nodes with a key length of n. Evicted nodes 
+would have to be read back in from the backing store to resume operations on them.  
+
+Eviction of a node only affects branch and extension nodes, which replace their
+children with backing nodes after they are committed.
 
 * Preloading
 
@@ -319,8 +321,7 @@ keys with length less than or equal to the one provided by obtaining them from
 the store.
 
 In a full (and therefore balanced) trie, preloading lengths has the effect of 
-loading the top levels of the trie.  This could accelerate future trie 
-operations.
+loading the top levels of the trie. 
 
 ### Raising nodes
 
