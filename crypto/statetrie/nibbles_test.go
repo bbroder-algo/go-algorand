@@ -18,7 +18,6 @@ package statetrie
 
 import (
 	"bytes"
-	"fmt"
 	"github.com/algorand/go-algorand/test/partitiontest"
 	"github.com/stretchr/testify/require"
 	"testing"
@@ -27,7 +26,6 @@ import (
 func TestNibbles(t *testing.T) { // nolint:paralleltest // Serial tests for trie for the moment
 	partitiontest.PartitionTest(t)
 	// t.Parallel()
-	fmt.Printf(t.Name())
 	sampleNibbles := []Nibbles{
 		{0x0, 0x1, 0x2, 0x3, 0x4},
 		{0x4, 0x1, 0x2, 0x3, 0x4},
@@ -126,4 +124,26 @@ func TestNibbles(t *testing.T) { // nolint:paralleltest // Serial tests for trie
 	mntr2 := MakeNibbles(makeNibblesTestData, false)
 	require.True(t, bytes.Equal(mntr2, makeNibblesTestExpectedFW))
 
+	sampleEqualTrue := [][]Nibbles{
+		{{0x0, 0x1, 0x2, 0x9, 0x2}, {0x0, 0x1, 0x2, 0x9, 0x2}},
+		{{0x0}, {0x0}},
+		{{0x1}, {0x1}},
+		{{0xf, 0xe}, {0xf, 0xe}},
+		{{}, {}},
+	}
+	sampleEqualFalse := [][]Nibbles{
+		{{0x0, 0x1, 0x2, 0x9, 0x2}, {0x0, 0x1, 0x2, 0x9}},
+		{{0x0, 0x1, 0x2, 0x9}, {0x0, 0x1, 0x2, 0x9, 0x2}},
+		{{0x0, 0x1, 0x2, 0x9, 0x2}, {}},
+		{{}, {0x0, 0x1, 0x2, 0x9, 0x2}},
+		{{0x0}, {}},
+		{{}, {0x0}},
+		{{}, {0x1}},
+	}
+	for _, n := range sampleEqualTrue {
+		require.True(t, equalNibbles(n[0], n[1]))
+	}
+	for _, n := range sampleEqualFalse {
+		require.False(t, equalNibbles(n[0], n[1]))
+	}
 }

@@ -21,7 +21,6 @@ import (
 	"errors"
 )
 
-// nibble utilities
 // Nibbles are 4-bit values stored in an 8-bit byte arrays
 type Nibbles []byte
 
