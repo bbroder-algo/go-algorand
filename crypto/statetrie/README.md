@@ -3,7 +3,7 @@
 
 The state trie, commonly known as a prefix tree, is a tree-like data structure
 used for storing an associative array where the keys are sequences of 4-bit
-bytes (nibbles) and the values are SHA-512/256 hashes of the key values.
+bytes (Nibbles) and the values are SHA-512/256 hashes of the key values.
 
 Each node of the trie contains a cryptographic hash of itself and any children 
 nodes.  This design ensures that the entire structure is tamper-evident, as a 
@@ -48,7 +48,7 @@ backing store that fuctions like a batched kv interface.
 efficiency, it offers a preloading feature to sweep all nodes with keylengths
 less than a provided parameter out of the backstore and into memory.
 
-* Nibble-sized proofs: 4-bit trie keys are represented as `nibbles`.  Each 
+* Nibble-sized proofs: 4-bit trie keys are represented as `Nibbles`.  Each 
 branch node has one child slot for each of the 16 nibble values. Using 
 nibbles over 8-bit bytes allows for smaller proofs, but creates smaller and
 more frequent backstore reads and taller tries.
@@ -61,10 +61,10 @@ on Commit.
 
 ```
 mt := MakeTrie(nil)
-key1 := nibbles{0x08, 0x0e, 0x02, 0x08}
-val1 := nibbles{0x03, 0x09, 0x0a, 0x0c}
-key2 := nibbles{0x08, 0x0d, 0x02, 0x08}
-val2 := nibbles{0x03, 0x09, 0x0a, 0x0c}
+key1 := MakeNibbles({0x8e, 0x28})
+key2 := MakeNibbles({0x8d, 0x28})
+val1 := []byte{0x13, 0x19, 0x2a, 0x3c}
+val2 := []byte{0x13, 0x19, 0x2a, 0x9f}
 
 mt.Add(key1, val1)
 fmt.Println("K1:V1 Hash:", mt.Hash())
@@ -76,9 +76,6 @@ mt.Delete(key2)
 fmt.Println("K1:V1 Hash:", mt.Hash())
 
 mt.Commit(nil)
-mt.Evict(func(node) bool { 
-  return true
-})
 ```
 
 The trie maintains an interface reference to the root of the trie, which is one
