@@ -19,6 +19,7 @@ package statetrie
 import (
 	"fmt"
 	"github.com/algorand/go-algorand/crypto"
+	"github.com/algorand/go-algorand/crypto/statetrie/nibbles"
 	"runtime/debug"
 )
 
@@ -26,12 +27,12 @@ import (
 
 type node interface {
 	child() node
-	getKey() Nibbles         // the key of the node in the trie
+	getKey() nibbles.Nibbles // the key of the node in the trie
 	getHash() *crypto.Digest // the hash of the node, if it has been hashed
 	//	getHash() crypto.Digest // the hash of the node, if it has been hashed
-	add(mt *Trie, pathKey Nibbles, remainingKey Nibbles, valueHash crypto.Digest) (node, error)
-	delete(mt *Trie, pathKey Nibbles, remainingKey Nibbles) (node, bool, error)
-	raise(mt *Trie, prefix Nibbles, key Nibbles) node
+	add(mt *Trie, pathKey nibbles.Nibbles, remainingKey nibbles.Nibbles, valueHash crypto.Digest) (node, error)
+	delete(mt *Trie, pathKey nibbles.Nibbles, remainingKey nibbles.Nibbles) (node, bool, error)
+	raise(mt *Trie, prefix nibbles.Nibbles, key nibbles.Nibbles) node
 	hashing() error
 	hashingCommit(store backing, e Eviction) error
 	merge(mt *Trie)
@@ -50,7 +51,7 @@ type node interface {
 //  5 == branch
 //
 
-func deserializeNode(nbytes []byte, key Nibbles) node {
+func deserializeNode(nbytes []byte, key nibbles.Nibbles) node {
 	if len(nbytes) == 0 {
 		debug.PrintStack()
 		panic("deserializeNode: zero length node")

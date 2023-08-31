@@ -20,18 +20,19 @@ import (
 	"bytes"
 	"fmt"
 	"github.com/algorand/go-algorand/crypto"
+	"github.com/algorand/go-algorand/crypto/statetrie/nibbles"
 )
 
 type branchNode struct {
 	children  [16]node
 	valueHash crypto.Digest
-	key       Nibbles
+	key       nibbles.Nibbles
 	hash      crypto.Digest
 }
 
-func makeBranchNode(children [16]node, valueHash crypto.Digest, key Nibbles) *branchNode {
+func makeBranchNode(children [16]node, valueHash crypto.Digest, key nibbles.Nibbles) *branchNode {
 	stats.makebranches++
-	bn := &branchNode{children: children, valueHash: valueHash, key: make(Nibbles, len(key))}
+	bn := &branchNode{children: children, valueHash: valueHash, key: make(nibbles.Nibbles, len(key))}
 	copy(bn.key, key)
 	return bn
 }
@@ -56,7 +57,7 @@ func (bn *branchNode) child() node {
 	return makeBranchNode(children, bn.valueHash, bn.key)
 }
 
-func (bn *branchNode) add(mt *Trie, pathKey Nibbles, remainingKey Nibbles, valueHash crypto.Digest) (node, error) {
+func (bn *branchNode) add(mt *Trie, pathKey nibbles.Nibbles, remainingKey nibbles.Nibbles, valueHash crypto.Digest) (node, error) {
 	//Three operational transitions:
 	//
 	//- BN.ADD.1: Store the new value in the branch node value slot. This overwrites
@@ -81,7 +82,7 @@ func (bn *branchNode) add(mt *Trie, pathKey Nibbles, remainingKey Nibbles, value
 	}
 
 	// Otherwise, shift out the first nibble and check the children for it.
-	shifted := shiftNibbles(remainingKey, 1)
+	shifted := nibbles.ShiftLeft(remainingKey, 1)
 	slot := remainingKey[0]
 	if bn.children[slot] == nil {
 		// nil children are available.
@@ -108,12 +109,12 @@ func (bn *branchNode) add(mt *Trie, pathKey Nibbles, remainingKey Nibbles, value
 
 	return bn, nil
 }
-func (bn *branchNode) raise(mt *Trie, prefix Nibbles, key Nibbles) node {
+func (bn *branchNode) raise(mt *Trie, prefix nibbles.Nibbles, key nibbles.Nibbles) node {
 	en := makeExtensionNode(prefix, bn, key)
 	mt.addNode(en)
 	return en
 }
-func (bn *branchNode) delete(mt *Trie, pathKey Nibbles, remainingKey Nibbles) (node, bool, error) {
+func (bn *branchNode) delete(mt *Trie, pathKey nibbles.Nibbles, remainingKey nibbles.Nibbles) (node, bool, error) {
 	//- BN.DEL.1: Copy the empty hash into the value slot, mark the node for rehashing.
 	//
 	//- BN.DEL.2: Raise up the only child left to replace the branch node.
@@ -155,7 +156,7 @@ func (bn *branchNode) delete(mt *Trie, pathKey Nibbles, remainingKey Nibbles) (n
 		if only != nil {
 			// only one child.  replace this branch with the child.
 			// transition BN.DEL.2
-			return only.raise(mt, Nibbles{byte(onlyIndex)}, bn.key), true, nil
+			return only.raise(mt, nibbles.Nibbles{byte(onlyIndex)}, bn.key), true, nil
 		}
 		// no children.  delete this branch.
 		// transition BN.DEL.3
@@ -169,7 +170,7 @@ func (bn *branchNode) delete(mt *Trie, pathKey Nibbles, remainingKey Nibbles) (n
 	}
 
 	// descend into the branch node.
-	shifted := shiftNibbles(remainingKey, 1)
+	shifted := nibbles.ShiftLeft(remainingKey, 1)
 	lnKey := pathKey[:]
 	lnKey = append(lnKey, remainingKey[0])
 	replacement, found, err := bn.children[remainingKey[0]].delete(mt, lnKey, shifted)
@@ -194,14 +195,14 @@ func (bn *branchNode) delete(mt *Trie, pathKey Nibbles, remainingKey Nibbles) (n
 		if only == nil && hasValueHash {
 			// only the value slot. replace this branch with a leaf.
 			// transition BN.DEL.5
-			ln := makeLeafNode(Nibbles{}, bn.valueHash, bn.key)
+			ln := makeLeafNode(nibbles.Nibbles{}, bn.valueHash, bn.key)
 			mt.addNode(ln)
 			return ln, true, nil
 		}
 		if only != nil {
 			// only one child.  replace this branch with the raised child.
 			// transition BN.DEL.6
-			return only.raise(mt, Nibbles{byte(onlyIndex)}, bn.key), true, nil
+			return only.raise(mt, nibbles.Nibbles{byte(onlyIndex)}, bn.key), true, nil
 		}
 		// no children.  delete this branch.
 		// transition BN.DEL.7
@@ -247,7 +248,7 @@ func (bn *branchNode) hashing() error {
 	return bn.hashingCommit(nil, nil)
 }
 
-func deserializeBranchNode(data []byte, key Nibbles) *branchNode {
+func deserializeBranchNode(data []byte, key nibbles.Nibbles) *branchNode {
 	if data[0] != 5 {
 		panic("invalid prefix for branch node")
 	}
@@ -333,7 +334,7 @@ func (bn *branchNode) lambda(l func(node), store backing) {
 	}
 }
 
-func (bn *branchNode) getKey() Nibbles {
+func (bn *branchNode) getKey() nibbles.Nibbles {
 	return bn.key
 }
 

@@ -18,6 +18,7 @@ package statetrie
 
 import (
 	"github.com/algorand/go-algorand/crypto"
+	"github.com/algorand/go-algorand/crypto/statetrie/nibbles"
 )
 
 type parent struct {
@@ -30,13 +31,13 @@ func makeParent(p node) *parent {
 	return pa
 }
 
-func (pa *parent) add(mt *Trie, pathKey Nibbles, remainingKey Nibbles, valueHash crypto.Digest) (node, error) {
+func (pa *parent) add(mt *Trie, pathKey nibbles.Nibbles, remainingKey nibbles.Nibbles, valueHash crypto.Digest) (node, error) {
 	return pa.p.child().add(mt, pathKey, remainingKey, valueHash)
 }
-func (pa *parent) delete(mt *Trie, pathKey Nibbles, remainingKey Nibbles) (node, bool, error) {
+func (pa *parent) delete(mt *Trie, pathKey nibbles.Nibbles, remainingKey nibbles.Nibbles) (node, bool, error) {
 	return pa.p.child().delete(mt, pathKey, remainingKey)
 }
-func (pa *parent) raise(mt *Trie, prefix Nibbles, key Nibbles) node {
+func (pa *parent) raise(mt *Trie, prefix nibbles.Nibbles, key nibbles.Nibbles) node {
 	return pa.p.child().raise(mt, prefix, key)
 }
 func (pa *parent) setHash(hash crypto.Digest) {
@@ -58,7 +59,7 @@ func (pa *parent) lambda(l func(node), store backing) {
 	}
 	l(pa)
 }
-func (pa *parent) getKey() Nibbles {
+func (pa *parent) getKey() nibbles.Nibbles {
 	return pa.p.getKey()
 }
 

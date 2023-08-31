@@ -20,12 +20,13 @@ import (
 	"bytes"
 	"fmt"
 	"github.com/algorand/go-algorand/crypto"
+	"github.com/algorand/go-algorand/crypto/statetrie/nibbles"
 )
 
 type leafNode struct {
-	keyEnd    Nibbles
+	keyEnd    nibbles.Nibbles
 	valueHash crypto.Digest
-	key       Nibbles
+	key       nibbles.Nibbles
 	hash      crypto.Digest
 }
 
@@ -33,20 +34,20 @@ type leafNode struct {
 //**Leaf nodes**
 //
 
-func makeLeafNode(keyEnd Nibbles, valueHash crypto.Digest, key Nibbles) *leafNode {
+func makeLeafNode(keyEnd nibbles.Nibbles, valueHash crypto.Digest, key nibbles.Nibbles) *leafNode {
 	stats.makeleaves++
-	ln := &leafNode{keyEnd: make(Nibbles, len(keyEnd)), valueHash: valueHash, key: make(Nibbles, len(key))}
+	ln := &leafNode{keyEnd: make(nibbles.Nibbles, len(keyEnd)), valueHash: valueHash, key: make(nibbles.Nibbles, len(key))}
 	copy(ln.key, key)
 	copy(ln.keyEnd, keyEnd)
 	return ln
 }
-func (ln *leafNode) raise(mt *Trie, prefix Nibbles, key Nibbles) node {
+func (ln *leafNode) raise(mt *Trie, prefix nibbles.Nibbles, key nibbles.Nibbles) node {
 	mt.delNode(ln)
 	ke := ln.keyEnd
-	ln.keyEnd = make(Nibbles, len(prefix)+len(ln.keyEnd))
+	ln.keyEnd = make(nibbles.Nibbles, len(prefix)+len(ln.keyEnd))
 	copy(ln.keyEnd, prefix)
 	copy(ln.keyEnd[len(prefix):], ke)
-	ln.key = make(Nibbles, len(key))
+	ln.key = make(nibbles.Nibbles, len(key))
 	copy(ln.key, key)
 	ln.hash = crypto.Digest{}
 	mt.addNode(ln)
@@ -66,7 +67,7 @@ func (ln *leafNode) child() node {
 func (ln *leafNode) setHash(hash crypto.Digest) {
 	ln.hash = hash
 }
-func (ln *leafNode) add(mt *Trie, pathKey Nibbles, remainingKey Nibbles, valueHash crypto.Digest) (node, error) {
+func (ln *leafNode) add(mt *Trie, pathKey nibbles.Nibbles, remainingKey nibbles.Nibbles, valueHash crypto.Digest) (node, error) {
 	//* Add operation transitions
 	//
 	//- LN.ADD.1: Store the new value in the existing leaf node, overwriting it.
@@ -151,7 +152,7 @@ func (ln *leafNode) add(mt *Trie, pathKey Nibbles, remainingKey Nibbles, valueHa
 	//  {key="AB", value="DEF"}
 	//  {key="CD", value="GHI"}
 	//
-	if equalNibbles(ln.keyEnd, remainingKey) {
+	if nibbles.Equal(ln.keyEnd, remainingKey) {
 		// The two keys are the same. Replace the value.
 		if ln.valueHash == valueHash {
 			// The two values are the same.  No change, don't clear the hash.
@@ -165,10 +166,10 @@ func (ln *leafNode) add(mt *Trie, pathKey Nibbles, remainingKey Nibbles, valueHa
 
 	// Calculate the shared Nibbles between the leaf node we're on and the key we're inserting.
 	// sharedNibbles returns the shared slice from the first argmuent, ln.keyEnd, and is read-only.
-	shNibbles := sharedNibbles(ln.keyEnd, remainingKey)
+	shNibbles := nibbles.SharedPrefix(ln.keyEnd, remainingKey)
 	// Shift away the common Nibbles from both the keys.
-	shiftedLn1 := shiftNibbles(ln.keyEnd, len(shNibbles))
-	shiftedLn2 := shiftNibbles(remainingKey, len(shNibbles))
+	shiftedLn1 := nibbles.ShiftLeft(ln.keyEnd, len(shNibbles))
+	shiftedLn2 := nibbles.ShiftLeft(remainingKey, len(shNibbles))
 
 	// Make a branch node.
 	var children [16]node
@@ -182,7 +183,7 @@ func (ln *leafNode) add(mt *Trie, pathKey Nibbles, remainingKey Nibbles, valueHa
 		// Otherwise, make a new leaf node that shifts away one nibble, and store it in that nibble's slot
 		// in the branch node.
 		key1 := append(append(pathKey, shNibbles...), shiftedLn1[0])
-		ln1 := makeLeafNode(shiftNibbles(shiftedLn1, 1), ln.valueHash, key1)
+		ln1 := makeLeafNode(nibbles.ShiftLeft(shiftedLn1, 1), ln.valueHash, key1)
 		mt.addNode(ln1)
 		// LN.ADD.3
 		children[shiftedLn1[0]] = ln1
@@ -199,7 +200,7 @@ func (ln *leafNode) add(mt *Trie, pathKey Nibbles, remainingKey Nibbles, valueHa
 		key2 := pathKey[:]
 		key2 = append(key2, shNibbles...)
 		key2 = append(key2, shiftedLn2[0])
-		ln2 := makeLeafNode(shiftNibbles(shiftedLn2, 1), valueHash, key2)
+		ln2 := makeLeafNode(nibbles.ShiftLeft(shiftedLn2, 1), valueHash, key2)
 		mt.addNode(ln2)
 		// LN.ADD.5
 		children[shiftedLn2[0]] = ln2
@@ -220,12 +221,12 @@ func (ln *leafNode) add(mt *Trie, pathKey Nibbles, remainingKey Nibbles, valueHa
 	// LN.ADD.7
 	return bn2, nil
 }
-func (ln *leafNode) delete(mt *Trie, pathKey Nibbles, remainingKey Nibbles) (node, bool, error) {
+func (ln *leafNode) delete(mt *Trie, pathKey nibbles.Nibbles, remainingKey nibbles.Nibbles) (node, bool, error) {
 	//- LN.DEL.1: Delete this leaf node that matches the Delete key.  Pointers to
 	//  this node from a branch or extension node are replaced with nil.  The node is
 	//  added to the trie's list of deleted keys for later backstore commit.
 	//
-	if equalNibbles(ln.keyEnd, remainingKey) {
+	if nibbles.Equal(ln.keyEnd, remainingKey) {
 		// The two keys are the same. Delete the value.
 		// transition LN.DEL.1
 		mt.delNode(ln)
@@ -260,7 +261,7 @@ func (ln *leafNode) hashingCommit(store backing, e Eviction) error {
 func (ln *leafNode) hashing() error {
 	return ln.hashingCommit(nil, nil)
 }
-func deserializeLeafNode(data []byte, key Nibbles) *leafNode {
+func deserializeLeafNode(data []byte, key nibbles.Nibbles) *leafNode {
 	if data[0] != 3 && data[0] != 4 {
 		panic("invalid leaf node")
 	}
@@ -268,7 +269,7 @@ func deserializeLeafNode(data []byte, key Nibbles) *leafNode {
 		panic("data too short to be a leaf node")
 	}
 
-	keyEnd := unpack(data[(1+crypto.DigestSize):], data[0] == 3)
+	keyEnd := nibbles.Unpack(data[(1+crypto.DigestSize):], data[0] == 3)
 	lnKey := key[:]
 	return makeLeafNode(keyEnd, crypto.Digest(data[1:(1+crypto.DigestSize)]), lnKey)
 }
@@ -279,7 +280,7 @@ func (ln *leafNode) serialize() ([]byte, error) {
 	lnbuffer.Reset()
 
 	prefix := byte(4)
-	pack, half := ln.keyEnd.pack()
+	pack, half := nibbles.Pack(ln.keyEnd)
 	if half {
 		prefix = byte(3)
 	}
@@ -288,7 +289,7 @@ func (ln *leafNode) serialize() ([]byte, error) {
 	lnbuffer.Write(pack)
 	return lnbuffer.Bytes(), nil
 }
-func (ln *leafNode) getKey() Nibbles {
+func (ln *leafNode) getKey() nibbles.Nibbles {
 	return ln.key
 }
 

@@ -18,6 +18,7 @@ package statetrie
 
 import (
 	"fmt"
+	"github.com/algorand/go-algorand/crypto/statetrie/nibbles"
 	"github.com/cockroachdb/pebble"
 	"github.com/cockroachdb/pebble/vfs"
 	"os"
@@ -65,16 +66,16 @@ func makeUntrustedBackstore(store backing) *untrustedBackstore {
 func (pub *untrustedBackstore) isTrusted() bool {
 	return false
 }
-func (pub *untrustedBackstore) get(key Nibbles) node {
+func (pub *untrustedBackstore) get(key nibbles.Nibbles) node {
 	return pub.store.get(key)
 }
 func (pub *untrustedBackstore) close() error {
 	return pub.store.close()
 }
-func (pub *untrustedBackstore) set(key Nibbles, value []byte) error {
+func (pub *untrustedBackstore) set(key nibbles.Nibbles, value []byte) error {
 	return pub.store.set(key, value)
 }
-func (pub *untrustedBackstore) del(key Nibbles) error {
+func (pub *untrustedBackstore) del(key nibbles.Nibbles) error {
 	return pub.store.del(key)
 }
 func (pub *untrustedBackstore) batchStart() {
@@ -86,10 +87,10 @@ func (pub *untrustedBackstore) batchEnd() {
 func (pb *pebbleBackstore) isTrusted() bool {
 	return true
 }
-func (pb *pebbleBackstore) get(key Nibbles) node {
+func (pb *pebbleBackstore) get(key nibbles.Nibbles) node {
 	stats.dbgets++
 
-	dbbytes, closer, err := pb.db.Get(key.serialize())
+	dbbytes, closer, err := pb.db.Get(nibbles.Serialize(key))
 	if err != nil {
 		//		fmt.Printf("\npebble err: key %x, error %v\n", key, err)
 		return nil
@@ -105,11 +106,11 @@ func (pb *pebbleBackstore) get(key Nibbles) node {
 func (pb *pebbleBackstore) close() error {
 	return pb.db.Close()
 }
-func (pb *pebbleBackstore) set(key Nibbles, value []byte) error {
-	return pb.db.Set(key.serialize(), value, pebble.NoSync)
+func (pb *pebbleBackstore) set(key nibbles.Nibbles, value []byte) error {
+	return pb.db.Set(nibbles.Serialize(key), value, pebble.NoSync)
 }
-func (pb *pebbleBackstore) del(key Nibbles) error {
-	return pb.db.Delete(key.serialize(), pebble.NoSync)
+func (pb *pebbleBackstore) del(key nibbles.Nibbles) error {
+	return pb.db.Delete(nibbles.Serialize(key), pebble.NoSync)
 }
 func (pb *pebbleBackstore) batchStart() {
 	pb.b = pb.db.NewBatch()
