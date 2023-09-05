@@ -1,0 +1,78 @@
+// Copyright (C) 2019-2023 Algorand, Inc.
+// This file is part of go-algorand
+//
+// go-algorand is free software: you can redistribute it and/or modfy
+// it under the terms of the GNU Affero General Public License as
+// published by the Free Software Foundation, either version 3 of the
+// License, or (at your option) any later version.
+//
+// go-algorand is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU Affero General Public License for more details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with go-algorand.  If not, see <https://www.gnu.org/licenses/>.
+
+package statetrie
+
+import (
+	"github.com/algorand/go-algorand/crypto"
+	"github.com/algorand/go-algorand/crypto/statetrie/nibbles"
+)
+
+type parent struct {
+	p node
+}
+
+func makeParent(p node) *parent {
+	stats.makepanodes++
+	pa := &parent{p: p}
+	return pa
+}
+
+func (pa *parent) add(mt *Trie, pathKey nibbles.Nibbles, remainingKey nibbles.Nibbles, valueHash crypto.Digest) (node, error) {
+	return pa.p.child().add(mt, pathKey, remainingKey, valueHash)
+}
+func (pa *parent) delete(mt *Trie, pathKey nibbles.Nibbles, remainingKey nibbles.Nibbles) (node, bool, error) {
+	return pa.p.child().delete(mt, pathKey, remainingKey)
+}
+func (pa *parent) raise(mt *Trie, prefix nibbles.Nibbles, key nibbles.Nibbles) node {
+	return pa.p.child().raise(mt, prefix, key)
+}
+func (pa *parent) setHash(hash crypto.Digest) {
+	pa.p.setHash(hash)
+}
+func (pa *parent) hashingCommit(store backing, e Eviction) error {
+	return pa.p.hashingCommit(store, e)
+}
+func (pa *parent) hashing() error {
+	return pa.p.hashing()
+}
+func (pa *parent) preload(store backing, length int) node {
+	return pa.p.preload(store, length)
+}
+func (pa *parent) lambda(l func(node), store backing) {
+	if store != nil {
+		pa.p.lambda(l, store)
+		return
+	}
+	l(pa)
+}
+func (pa *parent) getKey() nibbles.Nibbles {
+	return pa.p.getKey()
+}
+
+func (pa *parent) getHash() *crypto.Digest {
+	return pa.p.getHash()
+}
+
+func (pa *parent) merge(mt *Trie) {
+	panic("parent cannot be merged")
+}
+func (pa *parent) child() node {
+	panic("parent cannot be copied")
+}
+func (pa *parent) serialize() ([]byte, error) {
+	panic("parent cannot be serialized")
+}
